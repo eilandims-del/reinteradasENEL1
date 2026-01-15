@@ -144,28 +144,56 @@ export function generateHeatmapData(data) {
 
 /**
  * Filtrar dados por período
+ * Compara strings ISO (YYYY-MM-DD) diretamente para maior precisão
  */
 export function filterByDateRange(data, dataInicial, dataFinal) {
     if (!dataInicial && !dataFinal) {
         return data;
     }
 
+    // Normalizar datas iniciais e finais para formato ISO
+    const inicioISO = dataInicial ? dataInicial.split('T')[0] : null;
+    const fimISO = dataFinal ? dataFinal.split('T')[0] : null;
+
     return data.filter(item => {
-        const itemDate = item.DATA || item['DATA'];
-        if (!itemDate) return false;
-
-        try {
-            const date = new Date(itemDate);
-            const inicio = dataInicial ? new Date(dataInicial) : null;
-            const fim = dataFinal ? new Date(dataFinal) : null;
-
-            if (inicio && date < inicio) return false;
-            if (fim && date > fim) return false;
-
-            return true;
-        } catch (e) {
+        let itemDate = item.DATA || item['DATA'] || item.DATA_ISO;
+        
+        if (!itemDate) {
             return false;
         }
+
+        // Se for Timestamp do Firestore, converter
+        if (itemDate && typeof itemDate.toDate === 'function') {
+            const date = itemDate.toDate();
+            itemDate = date.toISOString().split('T')[0];
+        }
+        // Se for Date object, converter
+        else if (itemDate instanceof Date) {
+            itemDate = itemDate.toISOString().split('T')[0];
+        }
+        // Se for string, garantir formato ISO
+        else if (typeof itemDate === 'string') {
+            // Se já estiver no formato ISO, usar direto
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(itemDate)) {
+                // Tentar converter
+                const parsed = new Date(itemDate);
+                if (!isNaN(parsed.getTime())) {
+                    itemDate = parsed.toISOString().split('T')[0];
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        // Comparação de strings ISO (YYYY-MM-DD) funciona diretamente
+        if (inicioISO && itemDate < inicioISO) {
+            return false;
+        }
+        if (fimISO && itemDate > fimISO) {
+            return false;
+        }
+
+        return true;
     });
 }
 

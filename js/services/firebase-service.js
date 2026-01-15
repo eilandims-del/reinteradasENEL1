@@ -79,18 +79,11 @@ export class DataService {
                 const item = data[i];
                 const docRef = db.collection(this.COLLECTION_NAME).doc();
                 
-                // Converter DATA string para Timestamp se necessário
+                // Manter DATA como string ISO (YYYY-MM-DD) para facilitar filtros
+                // Não converter para Timestamp, manter como string para filtros mais simples
                 const itemData = { ...item };
-                if (itemData.DATA && typeof itemData.DATA === 'string') {
-                    try {
-                        const date = new Date(itemData.DATA);
-                        if (!isNaN(date.getTime())) {
-                            itemData.DATA = firebase.firestore.Timestamp.fromDate(date);
-                        }
-                    } catch (e) {
-                        // Manter como string se não conseguir converter
-                    }
-                }
+                // DATA já deve estar no formato ISO (YYYY-MM-DD) após parseDate
+                // Manter como string para facilitar filtros no cliente
 
                 currentBatch.set(docRef, {
                     ...itemData,
@@ -144,10 +137,25 @@ export class DataService {
             snapshot.forEach(doc => {
                 const docData = doc.data();
                 
-                // Converter Timestamp do Firestore para string se necessário
-                if (docData.DATA && docData.DATA.toDate) {
-                    const date = docData.DATA.toDate();
-                    docData.DATA = date.toISOString().split('T')[0];
+                // Converter Timestamp do Firestore para string ISO se necessário
+                if (docData.DATA) {
+                    if (docData.DATA.toDate && typeof docData.DATA.toDate === 'function') {
+                        // É Timestamp do Firestore
+                        const date = docData.DATA.toDate();
+                        docData.DATA = date.toISOString().split('T')[0];
+                    } else if (docData.DATA instanceof Date) {
+                        // É objeto Date
+                        docData.DATA = docData.DATA.toISOString().split('T')[0];
+                    } else if (typeof docData.DATA === 'string') {
+                        // Já é string, garantir formato ISO
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(docData.DATA)) {
+                            // Tentar converter para ISO
+                            const parsed = new Date(docData.DATA);
+                            if (!isNaN(parsed.getTime())) {
+                                docData.DATA = parsed.toISOString().split('T')[0];
+                            }
+                        }
+                    }
                 }
                 
                 data.push({
@@ -166,10 +174,28 @@ export class DataService {
 
                 snapshot.forEach(doc => {
                     const docData = doc.data();
-                    if (docData.DATA && docData.DATA.toDate) {
-                        const date = docData.DATA.toDate();
-                        docData.DATA = date.toISOString().split('T')[0];
+                    
+                    // Converter Timestamp do Firestore para string ISO se necessário
+                    if (docData.DATA) {
+                        if (docData.DATA.toDate && typeof docData.DATA.toDate === 'function') {
+                            // É Timestamp do Firestore
+                            const date = docData.DATA.toDate();
+                            docData.DATA = date.toISOString().split('T')[0];
+                        } else if (docData.DATA instanceof Date) {
+                            // É objeto Date
+                            docData.DATA = docData.DATA.toISOString().split('T')[0];
+                        } else if (typeof docData.DATA === 'string') {
+                            // Já é string, garantir formato ISO
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(docData.DATA)) {
+                                // Tentar converter para ISO
+                                const parsed = new Date(docData.DATA);
+                                if (!isNaN(parsed.getTime())) {
+                                    docData.DATA = parsed.toISOString().split('T')[0];
+                                }
+                            }
+                        }
                     }
+                    
                     data.push({
                         id: doc.id,
                         ...docData

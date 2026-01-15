@@ -84,11 +84,29 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
         // Campos fixos
         fixedFields.forEach(field => {
             // Buscar pela chave original, normalizada, e variações
+            // Para DATA, tentar várias variações incluindo busca em todas as chaves
             let value = ocorrencia[field.key] || 
                        ocorrencia[normalizeKey(field.key)] || 
                        ocorrencia[field.key.replace(/\./g, '')] ||
                        ocorrencia[field.key.toUpperCase()] ||
-                       'N/A';
+                       ocorrencia[field.key.toLowerCase()] ||
+                       null;
+            
+            // Se ainda não encontrou, buscar em todas as chaves (caso esteja normalizada)
+            if (!value || value === null || value === undefined) {
+                const normalizedField = normalizeKey(field.key);
+                for (const key in ocorrencia) {
+                    if (normalizeKey(key) === normalizedField) {
+                        value = ocorrencia[key];
+                        break;
+                    }
+                }
+            }
+            
+            // Se ainda não encontrou, usar 'N/A'
+            if (!value || value === null || value === undefined || value === '') {
+                value = 'N/A';
+            }
             
             const itemDiv = document.createElement('div');
             itemDiv.className = 'detalhe-item';
@@ -176,14 +194,50 @@ function formatIncidenciaUrl(incidencia) {
 }
 
 /**
- * Formatar data
+ * Formatar data para exibição (DD/MM/YYYY)
+ * Aceita string ISO, Date object, Timestamp do Firestore
  */
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
+function formatDate(dateValue) {
+    if (!dateValue) return 'N/A';
+    
     try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('pt-BR');
+        let date = null;
+
+        // Se for Timestamp do Firestore
+        if (dateValue && typeof dateValue.toDate === 'function') {
+            date = dateValue.toDate();
+        }
+        // Se for objeto Date
+        else if (dateValue instanceof Date) {
+            date = dateValue;
+        }
+        // Se for string
+        else if (typeof dateValue === 'string') {
+            // Se estiver no formato ISO (YYYY-MM-DD), fazer parse
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+                // Parse ISO date (YYYY-MM-DD)
+                const parts = dateValue.split('-');
+                date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            } else {
+                // Tentar parse padrão
+                date = new Date(dateValue);
+            }
+        }
+
+        // Validar data
+        if (!date || isNaN(date.getTime())) {
+            console.warn('Data inválida no formatDate:', dateValue);
+            return dateValue || 'N/A';
+        }
+
+        // Formatar para pt-BR (DD/MM/YYYY)
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
     } catch (e) {
-        return dateString;
+        console.warn('Erro ao formatar data:', dateValue, e);
+        return dateValue || 'N/A';
     }
 }
