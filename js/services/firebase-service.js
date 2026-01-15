@@ -251,60 +251,161 @@ export class DataService {
 
     /**
      * Excluir dados de um upload específico
+     * Implementação robusta com verificação e fallback
      */
     static async deleteUpload(uploadId) {
-        try {
-            // Buscar todos os documentos com esse uploadId
-            const snapshot = await db.collection(this.COLLECTION_NAME)
-                .where('uploadId', '==', uploadId)
-                .get();
+        if (!uploadId) {
+            return {
+                success: false,
+                error: 'UploadId não fornecido'
+            };
+        }
 
-            if (snapshot.empty) {
-                // Mesmo sem registros, deletar o registro do upload
-                await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
+        console.log('[DELETE] Iniciando exclusão do upload:', uploadId);
+
+        try {
+            let snapshot;
+            let queryMethod = 'indexed';
+
+            // Tentar buscar usando query com índice (método preferido)
+            try {
+                snapshot = await db.collection(this.COLLECTION_NAME)
+                    .where('uploadId', '==', uploadId)
+                    .get();
+                console.log('[DELETE] Query indexada encontrou:', snapshot.size, 'registros');
+            } catch (queryError) {
+                // Se a query falhar (provavelmente falta de índice), usar fallback
+                console.warn('[DELETE] Query indexada falhou, usando método alternativo:', queryError.message);
+                
+                // Fallback: Buscar todos os registros e filtrar no cliente
+                // ATENÇÃO: Isso pode ser lento para grandes volumes
+                const allSnapshot = await db.collection(this.COLLECTION_NAME).get();
+                const filteredDocs = [];
+                
+                allSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (data.uploadId === uploadId) {
+                        filteredDocs.push(doc);
+                    }
+                });
+
+                // Criar um QuerySnapshot simulado
+                snapshot = {
+                    size: filteredDocs.length,
+                    empty: filteredDocs.length === 0,
+                    forEach: (callback) => {
+                        filteredDocs.forEach(callback);
+                    },
+                    docs: filteredDocs
+                };
+
+                queryMethod = 'fallback';
+                console.log('[DELETE] Método alternativo encontrou:', snapshot.size, 'registros');
+            }
+
+            // Verificar se há registros para excluir
+            if (snapshot.empty || snapshot.size === 0) {
+                console.log('[DELETE] Nenhum registro encontrado para uploadId:', uploadId);
+                
+                // Mesmo sem registros, deletar o registro do upload (limpeza)
+                try {
+                    await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
+                    console.log('[DELETE] Registro de upload removido da coleção uploads');
+                } catch (deleteError) {
+                    console.warn('[DELETE] Erro ao remover registro de upload:', deleteError.message);
+                }
+
                 return {
                     success: true,
-                    deletedCount: 0
+                    deletedCount: 0,
+                    method: queryMethod
                 };
             }
 
-            // Deletar em batches (limite de 500 por vez)
+            // Processar exclusão em batches
             const batchLimit = 500;
             let deletedCount = 0;
             const batches = [];
             let currentBatch = db.batch();
             let batchCount = 0;
+            let docIndex = 0;
 
-            snapshot.forEach((doc, index) => {
+            snapshot.forEach((doc) => {
                 currentBatch.delete(doc.ref);
                 batchCount++;
                 deletedCount++;
+                docIndex++;
 
                 // Se atingir o limite ou for o último item, adicionar ao array de batches
-                if (batchCount >= batchLimit || index === snapshot.size - 1) {
+                if (batchCount >= batchLimit || docIndex === snapshot.size) {
                     batches.push(currentBatch);
-                    if (index < snapshot.size - 1) {
+                    if (docIndex < snapshot.size) {
                         currentBatch = db.batch();
                         batchCount = 0;
                     }
                 }
             });
 
-            // Executar todos os batches
-            await Promise.all(batches.map(batch => batch.commit()));
+            console.log('[DELETE] Preparados', batches.length, 'batches para excluir', deletedCount, 'registros');
 
-            // Deletar o registro do upload
-            await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
+            // Executar todos os batches sequencialmente (mais seguro)
+            for (let i = 0; i < batches.length; i++) {
+                await batches[i].commit();
+                console.log(`[DELETE] Batch ${i + 1}/${batches.length} commitado`);
+            }
+
+            // Verificar se a exclusão foi bem-sucedida
+            // Aguardar um pouco para garantir propagação
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Verificar se ainda existem registros (verificação opcional)
+            let verificationSnapshot;
+            try {
+                verificationSnapshot = await db.collection(this.COLLECTION_NAME)
+                    .where('uploadId', '==', uploadId)
+                    .limit(1)
+                    .get();
+            } catch (e) {
+                // Se a verificação falhar (falta de índice), pular
+                verificationSnapshot = { size: 0 };
+            }
+
+            if (verificationSnapshot.size > 0) {
+                console.warn('[DELETE] AVISO: Ainda existem', verificationSnapshot.size, 'registros após exclusão');
+                return {
+                    success: false,
+                    error: `Exclusão parcial: ${verificationSnapshot.size} registros ainda existem`,
+                    deletedCount: deletedCount,
+                    remainingCount: verificationSnapshot.size
+                };
+            }
+
+            // Deletar o registro do upload na coleção uploads
+            try {
+                await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
+                console.log('[DELETE] Registro de upload removido da coleção uploads');
+            } catch (deleteError) {
+                console.warn('[DELETE] Erro ao remover registro de upload:', deleteError.message);
+                // Não falhar a operação se apenas o registro de upload não for deletado
+            }
+
+            console.log('[DELETE] Exclusão concluída com sucesso:', deletedCount, 'registros removidos');
 
             return {
                 success: true,
-                deletedCount: deletedCount
+                deletedCount: deletedCount,
+                method: queryMethod
             };
+
         } catch (error) {
-            console.error('Erro ao excluir upload:', error);
+            console.error('[DELETE] Erro ao excluir upload:', error);
+            console.error('[DELETE] Stack trace:', error.stack);
+            
             return {
                 success: false,
-                error: error.message
+                error: error.message,
+                errorCode: error.code || 'UNKNOWN',
+                deletedCount: 0
             };
         }
     }

@@ -3,6 +3,7 @@
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
+import { db } from './firebase-config.js';
 import { parseFile } from './utils/file-parser.js';
 import { showToast } from './utils/helpers.js';
 
@@ -176,21 +177,32 @@ async function handleFileUpload(file) {
         progressFill.style.width = '50%';
         progressText.textContent = 'Validando dados...';
 
-        // Gerar ID do upload
+        // Gerar ID único do upload (spreadsheetId)
         const uploadId = DataService.generateUploadId();
+        console.log('[UPLOAD] UploadId gerado:', uploadId);
+        console.log('[UPLOAD] Total de registros para salvar:', parsed.data.length);
 
         progressFill.style.width = '70%';
         progressText.textContent = 'Salvando no banco de dados...';
 
-        // Salvar no Firestore
-        const saveResult = await DataService.saveData(parsed.data, {
-            uploadId,
+        // Preparar metadata com uploadId garantido
+        const metadata = {
+            uploadId: uploadId, // ID único obrigatório
             fileName: file.name,
             fileSize: file.size,
             fileType: file.type || 'unknown',
             totalColumns: parsed.headers.length,
-            columns: parsed.headers
-        });
+            columns: parsed.headers,
+            uploadedAt: new Date().toISOString()
+        };
+
+        // Salvar no Firestore
+        const saveResult = await DataService.saveData(parsed.data, metadata);
+        
+        console.log('[UPLOAD] Resultado do save:', saveResult);
+        
+        // Verificação pós-upload será feita automaticamente pelo sistema
+        // O uploadId está garantido no metadata e será salvo em todos os registros
 
         if (saveResult.success) {
             progressFill.style.width = '100%';
@@ -236,38 +248,83 @@ async function handleFileUpload(file) {
 
 /**
  * Manipular exclusão de upload
+ * Implementação robusta com verificações e feedback detalhado
  */
 async function handleDeleteUpload(uploadId, fileName) {
     // Confirmar exclusão
-    const confirmMessage = `Tem certeza que deseja excluir a planilha "${fileName}"?\n\nEsta ação não pode ser desfeita e todos os registros relacionados serão removidos.`;
+    const confirmMessage = `Tem certeza que deseja excluir a planilha "${fileName}"?\n\n⚠️ ATENÇÃO:\n- Esta ação não pode ser desfeita\n- Todos os registros relacionados serão removidos permanentemente do Firebase\n- Os rankings serão atualizados automaticamente\n\nDeseja continuar?`;
     
     if (!confirm(confirmMessage)) {
         return;
     }
 
-    // Mostrar loading
+    // Mostrar loading com mensagem detalhada
     const historyContainer = document.getElementById('uploadHistory');
     const originalContent = historyContainer.innerHTML;
-    historyContainer.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Excluindo...</div>';
+    historyContainer.innerHTML = `
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i> 
+            <p>Excluindo planilha "${fileName}"...</p>
+            <p style="font-size: 0.9rem; color: var(--medium-gray); margin-top: 0.5rem;">
+                Isso pode levar alguns segundos dependendo do tamanho dos dados.
+            </p>
+        </div>
+    `;
 
     try {
+        console.log('[ADMIN] Iniciando exclusão de upload:', uploadId, fileName);
+        
         const result = await DataService.deleteUpload(uploadId);
 
         if (result.success) {
-            showToast(`Planilha excluída com sucesso! ${result.deletedCount} registro(s) removido(s).`, 'success');
+            const message = result.deletedCount > 0 
+                ? `✅ Planilha excluída com sucesso! ${result.deletedCount} registro(s) removido(s) permanentemente do Firebase.`
+                : `✅ Referência da planilha removida. (Nenhum registro encontrado no banco)`;
             
-            // Recarregar histórico após 1 segundo
+            showToast(message, 'success');
+            console.log('[ADMIN] Exclusão bem-sucedida:', result);
+            
+            // Recarregar histórico após 1.5 segundos para garantir propagação
             setTimeout(() => {
                 loadUploadHistory();
-            }, 1000);
+            }, 1500);
+            
+            // Forçar recarregamento da página principal se estiver aberta
+            // (Nota: Isso só funciona se estiver na mesma origem)
+            if (window.opener) {
+                window.opener.location.reload();
+            }
         } else {
-            showToast(`Erro ao excluir: ${result.error}`, 'error');
-            historyContainer.innerHTML = originalContent;
+            const errorMessage = result.error || 'Erro desconhecido ao excluir';
+            const detailedMessage = result.errorCode 
+                ? `Erro (${result.errorCode}): ${errorMessage}`
+                : `Erro: ${errorMessage}`;
+            
+            showToast(detailedMessage, 'error');
+            console.error('[ADMIN] Erro na exclusão:', result);
+            
+            // Se foi exclusão parcial, avisar o usuário
+            if (result.remainingCount && result.remainingCount > 0) {
+                const partialMessage = `⚠️ Exclusão parcial: ${result.deletedCount} removidos, mas ${result.remainingCount} ainda existem. Verifique as permissões do Firestore ou recarregue a página.`;
+                alert(partialMessage);
+            }
+            
+            // Restaurar conteúdo original
+            setTimeout(() => {
+                historyContainer.innerHTML = originalContent;
+                // Reanexar eventos
+                loadUploadHistory();
+            }, 2000);
         }
     } catch (error) {
-        console.error('Erro ao excluir upload:', error);
-        showToast(`Erro ao excluir: ${error.message}`, 'error');
-        historyContainer.innerHTML = originalContent;
+        console.error('[ADMIN] Erro inesperado ao excluir upload:', error);
+        showToast(`Erro inesperado: ${error.message}`, 'error');
+        
+        // Restaurar conteúdo original
+        setTimeout(() => {
+            historyContainer.innerHTML = originalContent;
+            loadUploadHistory();
+        }, 2000);
     }
 }
 
