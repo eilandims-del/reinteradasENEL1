@@ -294,29 +294,37 @@ async function loadUploadHistory() {
                 item.uploadedAt.toDate().toLocaleString('pt-BR') : 
                 'Data não disponível';
 
+            const fileName = item.fileName || 'Arquivo sem nome';
+            const uploadId = item.id;
+
             historyItem.innerHTML = `
                 <div class="history-info">
-                    <h3>${item.fileName || 'Arquivo sem nome'}</h3>
+                    <h3>${fileName}</h3>
                     <p>Upload em: ${date}</p>
                     <p>Por: ${item.uploadedBy || 'Desconhecido'}</p>
                 </div>
                 <div class="history-actions">
                     <span class="history-badge success">${item.totalRecords || 0} registros</span>
-                    <button class="btn btn-danger btn-sm btn-delete-upload" data-upload-id="${item.id}" title="Excluir esta planilha">
+                    <button class="btn btn-danger btn-sm btn-delete-upload" data-upload-id="${uploadId}" title="Excluir esta planilha" type="button">
                         <i class="fas fa-trash"></i> Excluir
                     </button>
                 </div>
             `;
 
-            // Adicionar evento de clique no botão de excluir
+            // Adicionar ao DOM primeiro
+            historyContainer.appendChild(historyItem);
+
+            // Depois adicionar evento de clique no botão de excluir
             const deleteBtn = historyItem.querySelector('.btn-delete-upload');
             if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => {
-                    handleDeleteUpload(item.id, item.fileName || 'Arquivo sem nome');
+                deleteBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDeleteUpload(uploadId, fileName);
                 });
+            } else {
+                console.error('Botão de excluir não encontrado para:', uploadId, fileName);
             }
-
-            historyContainer.appendChild(historyItem);
         });
     } else {
         historyContainer.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum upload realizado ainda.</p>';

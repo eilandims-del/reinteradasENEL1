@@ -145,11 +145,19 @@ body {
 .btn-danger {
     background-color: var(--error);
     color: var(--white);
+    border: none;
+    cursor: pointer;
 }
 
 .btn-danger:hover {
     background-color: #C0392B;
     transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(231, 76, 60, 0.3);
+}
+
+.btn-danger:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(231, 76, 60, 0.3);
 }
 
 .btn-whatsapp {
