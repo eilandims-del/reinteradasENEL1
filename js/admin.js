@@ -196,8 +196,15 @@ async function handleFileUpload(file) {
             uploadedAt: new Date().toISOString()
         };
 
-        // Salvar no Firestore
-        const saveResult = await DataService.saveData(parsed.data, metadata);
+        // Callback de progresso para atualizar UI
+        const updateProgress = (progressInfo) => {
+            const progress = progressInfo.progress;
+            progressFill.style.width = `${70 + (progress * 0.3)}%`; // 70% a 100%
+            progressText.textContent = `Salvando batch ${progressInfo.batch}/${progressInfo.totalBatches}... (${progressInfo.saved}/${progressInfo.total} registros - ${progress}%)`;
+        };
+
+        // Salvar no Firestore com callback de progresso
+        const saveResult = await DataService.saveData(parsed.data, metadata, updateProgress);
         
         console.log('[UPLOAD] Resultado do save:', saveResult);
         

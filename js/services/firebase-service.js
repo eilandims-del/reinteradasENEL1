@@ -65,62 +65,146 @@ export class DataService {
 
     /**
      * Salvar dados processados no Firestore
+     * CORRIGIDO: Implementa batching seguro, throttling, retry com backoff e idempotência
      */
-    static async saveData(data, metadata = {}) {
+    static async saveData(data, metadata = {}, progressCallback = null) {
         try {
             const timestamp = firebase.firestore.FieldValue.serverTimestamp();
+            const uploadId = metadata.uploadId;
+            
+            if (!uploadId) {
+                throw new Error('uploadId é obrigatório para garantir idempotência');
+            }
 
-            // Limitar batch a 500 documentos (limite do Firestore)
-            const batchLimit = 500;
-            let currentBatch = db.batch();
-            let batchCount = 0;
+            // Configurações de batching seguro (evitar quota exceeded)
+            const BATCH_SIZE = 250; // Margem segura abaixo do limite de 500
+            const THROTTLE_MS = 500; // Delay entre batches
+            const MAX_RETRIES = 5;
+            const INITIAL_BACKOFF_MS = 1000;
+            
+            let totalSaved = 0;
+            const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+            
+            console.log(`[UPLOAD] Iniciando upload de ${data.length} registros em ${totalBatches} batches`);
 
-            for (let i = 0; i < data.length; i++) {
-                const item = data[i];
-                const docRef = db.collection(this.COLLECTION_NAME).doc();
+            // Processar em batches com throttling
+            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+                const startIndex = batchIndex * BATCH_SIZE;
+                const endIndex = Math.min(startIndex + BATCH_SIZE, data.length);
+                const batchData = data.slice(startIndex, endIndex);
                 
-                // Manter DATA como string ISO (YYYY-MM-DD) para facilitar filtros
-                // Não converter para Timestamp, manter como string para filtros mais simples
-                const itemData = { ...item };
-                // DATA já deve estar no formato ISO (YYYY-MM-DD) após parseDate
-                // Manter como string para facilitar filtros no cliente
-
-                currentBatch.set(docRef, {
-                    ...itemData,
-                    createdAt: timestamp,
-                    uploadId: metadata.uploadId || null
-                });
-
-                batchCount++;
-
-                // Se atingir o limite ou for o último item, commitar e criar novo batch
-                if (batchCount >= batchLimit || i === data.length - 1) {
-                    await currentBatch.commit();
-                    if (i < data.length - 1) {
-                        currentBatch = db.batch();
-                        batchCount = 0;
+                let retryCount = 0;
+                let batchSuccess = false;
+                
+                // Retry com exponential backoff
+                while (retryCount < MAX_RETRIES && !batchSuccess) {
+                    try {
+                        const batch = db.batch();
+                        
+                        // Adicionar documentos ao batch com ID determinístico (idempotência)
+                        batchData.forEach((item, index) => {
+                            const rowIndex = startIndex + index;
+                            // ID determinístico: uploadId_rowIndex garante idempotência
+                            const docId = `${uploadId}_${rowIndex}`;
+                            const docRef = db.collection(this.COLLECTION_NAME).doc(docId);
+                            
+                            const itemData = {
+                                ...item,
+                                createdAt: timestamp,
+                                uploadId: uploadId,
+                                rowIndex: rowIndex // Para rastreamento
+                            };
+                            
+                            // Usar set com merge para idempotência (não duplica se reimportar)
+                            batch.set(docRef, itemData, { merge: true });
+                        });
+                        
+                        // Commit do batch
+                        await batch.commit();
+                        totalSaved += batchData.length;
+                        batchSuccess = true;
+                        
+                        const progress = Math.round((totalSaved / data.length) * 100);
+                        console.log(`[UPLOAD] Batch ${batchIndex + 1}/${totalBatches} commitado: ${batchData.length} registros (${totalSaved}/${data.length} - ${progress}%)`);
+                        
+                        if (progressCallback) {
+                            progressCallback({
+                                batch: batchIndex + 1,
+                                totalBatches: totalBatches,
+                                saved: totalSaved,
+                                total: data.length,
+                                progress: progress
+                            });
+                        }
+                        
+                    } catch (error) {
+                        retryCount++;
+                        const errorCode = error.code || error.message;
+                        
+                        // Verificar se é erro transitório (retry) ou permanente (fail)
+                        const isTransientError = 
+                            errorCode === 'resource-exhausted' ||
+                            errorCode === 'unavailable' ||
+                            errorCode === 'deadline-exceeded' ||
+                            error.message?.includes('Quota exceeded') ||
+                            error.message?.includes('maximum backoff');
+                        
+                        if (isTransientError && retryCount < MAX_RETRIES) {
+                            // Exponential backoff com jitter
+                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
+                            const jitter = Math.random() * 500; // 0-500ms de jitter
+                            const delay = backoffMs + jitter;
+                            
+                            console.warn(
+                                `[UPLOAD] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
+                                errorCode,
+                                `Próximo retry em ${Math.round(delay)}ms`
+                            );
+                            
+                            await this.sleep(delay);
+                        } else {
+                            // Erro permanente ou esgotou retries
+                            console.error(`[UPLOAD] Erro ao salvar batch ${batchIndex + 1}:`, error);
+                            throw error;
+                        }
                     }
+                }
+                
+                // Throttling entre batches (exceto no último)
+                if (batchIndex < totalBatches - 1) {
+                    await this.sleep(THROTTLE_MS);
                 }
             }
 
-            // Salvar metadata do upload
-            if (metadata.uploadId) {
-                await db.collection(this.UPLOADS_COLLECTION).doc(metadata.uploadId).set({
+            // Salvar metadata do upload (com merge para idempotência)
+            if (uploadId) {
+                await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).set({
                     ...metadata,
                     totalRecords: data.length,
                     uploadedAt: timestamp,
-                    uploadedBy: auth.currentUser?.email || 'unknown'
-                });
+                    uploadedBy: auth.currentUser?.email || 'unknown',
+                    lastUpdated: timestamp
+                }, { merge: true });
             }
 
-            return { success: true, count: data.length };
+            console.log(`[UPLOAD] Upload concluído: ${totalSaved} registros salvos com sucesso`);
+            return { success: true, count: totalSaved };
+            
         } catch (error) {
-            console.error('Erro ao salvar dados:', error);
+            console.error('[UPLOAD] Erro ao salvar dados:', error);
             return {
                 success: false,
-                error: error.message
+                error: error.message,
+                errorCode: error.code
             };
         }
+    }
+
+    /**
+     * Helper: Sleep para throttling
+     */
+    static sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     /**
@@ -416,36 +500,77 @@ export class DataService {
                 };
             }
 
-            // Processar exclusão em batches
-            const batchLimit = 500;
+            // Processar exclusão em batches com throttling e retry
+            const BATCH_SIZE = 250; // Margem segura
+            const THROTTLE_MS = 500; // Delay entre batches
+            const MAX_RETRIES = 5;
+            const INITIAL_BACKOFF_MS = 1000;
+            
             let deletedCount = 0;
-            const batches = [];
-            let currentBatch = db.batch();
-            let batchCount = 0;
-            let docIndex = 0;
-
+            const docsToDelete = [];
             snapshot.forEach((doc) => {
-                currentBatch.delete(doc.ref);
-                batchCount++;
-                deletedCount++;
-                docIndex++;
-
-                // Se atingir o limite ou for o último item, adicionar ao array de batches
-                if (batchCount >= batchLimit || docIndex === snapshot.size) {
-                    batches.push(currentBatch);
-                    if (docIndex < snapshot.size) {
-                        currentBatch = db.batch();
-                        batchCount = 0;
-                    }
-                }
+                docsToDelete.push(doc);
             });
 
-            console.log('[DELETE] Preparados', batches.length, 'batches para excluir', deletedCount, 'registros');
+            const totalBatches = Math.ceil(docsToDelete.length / BATCH_SIZE);
+            console.log(`[DELETE] Preparando exclusão de ${docsToDelete.length} registros em ${totalBatches} batches`);
 
-            // Executar todos os batches sequencialmente (mais seguro)
-            for (let i = 0; i < batches.length; i++) {
-                await batches[i].commit();
-                console.log(`[DELETE] Batch ${i + 1}/${batches.length} commitado`);
+            // Processar batches com throttling e retry
+            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+                const startIndex = batchIndex * BATCH_SIZE;
+                const endIndex = Math.min(startIndex + BATCH_SIZE, docsToDelete.length);
+                const batchDocs = docsToDelete.slice(startIndex, endIndex);
+                
+                let retryCount = 0;
+                let batchSuccess = false;
+                
+                // Retry com exponential backoff
+                while (retryCount < MAX_RETRIES && !batchSuccess) {
+                    try {
+                        const batch = db.batch();
+                        batchDocs.forEach(doc => {
+                            batch.delete(doc.ref);
+                        });
+                        
+                        await batch.commit();
+                        deletedCount += batchDocs.length;
+                        batchSuccess = true;
+                        
+                        console.log(`[DELETE] Batch ${batchIndex + 1}/${totalBatches} commitado: ${batchDocs.length} registros (${deletedCount}/${docsToDelete.length})`);
+                        
+                    } catch (error) {
+                        retryCount++;
+                        const errorCode = error.code || error.message;
+                        
+                        const isTransientError = 
+                            errorCode === 'resource-exhausted' ||
+                            errorCode === 'unavailable' ||
+                            errorCode === 'deadline-exceeded' ||
+                            error.message?.includes('Quota exceeded');
+                        
+                        if (isTransientError && retryCount < MAX_RETRIES) {
+                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
+                            const jitter = Math.random() * 500;
+                            const delay = backoffMs + jitter;
+                            
+                            console.warn(
+                                `[DELETE] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
+                                errorCode,
+                                `Próximo retry em ${Math.round(delay)}ms`
+                            );
+                            
+                            await this.sleep(delay);
+                        } else {
+                            console.error(`[DELETE] Erro ao excluir batch ${batchIndex + 1}:`, error);
+                            throw error;
+                        }
+                    }
+                }
+                
+                // Throttling entre batches
+                if (batchIndex < totalBatches - 1) {
+                    await this.sleep(THROTTLE_MS);
+                }
             }
 
             // Verificar se a exclusão foi bem-sucedida
