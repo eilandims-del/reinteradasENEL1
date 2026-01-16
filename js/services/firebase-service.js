@@ -148,11 +148,32 @@ export class DataService {
                         const day = String(date.getDate()).padStart(2, '0');
                         docData.DATA = `${year}-${month}-${day}`;
                     } else if (docData.DATA instanceof Date) {
-                        // É objeto Date - usar métodos locais
-                        const year = docData.DATA.getFullYear();
-                        const month = String(docData.DATA.getMonth() + 1).padStart(2, '0');
-                        const day = String(docData.DATA.getDate()).padStart(2, '0');
-                        docData.DATA = `${year}-${month}-${day}`;
+                        // BUG CORRIGIDO: Date objects criados com new Date("YYYY-MM-DD") são UTC
+                        // Verificar se há diferença entre UTC e local para corrigir
+                        const date = docData.DATA;
+                        const utcDay = date.getUTCDate();
+                        const localDay = date.getDate();
+                        const utcMonth = date.getUTCMonth();
+                        const localMonth = date.getMonth();
+                        
+                        let year, month, day;
+                        if (utcDay !== localDay || utcMonth !== localMonth) {
+                            // Date foi criado incorretamente, usar valores UTC e recriar como local
+                            year = date.getUTCFullYear();
+                            month = date.getUTCMonth() + 1;
+                            day = date.getUTCDate();
+                            // Recriar como data local
+                            const localDate = new Date(year, month - 1, day);
+                            year = localDate.getFullYear();
+                            month = localDate.getMonth() + 1;
+                            day = localDate.getDate();
+                        } else {
+                            // Date foi criado corretamente, usar métodos locais
+                            year = date.getFullYear();
+                            month = date.getMonth() + 1;
+                            day = date.getDate();
+                        }
+                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     } else if (typeof docData.DATA === 'string') {
                         // Já é string, garantir formato ISO sem usar new Date()
                         if (!/^\d{4}-\d{2}-\d{2}$/.test(docData.DATA.trim())) {
@@ -177,14 +198,30 @@ export class DataService {
                                     docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                 } else {
                                     // Último recurso - usar new Date() apenas se necessário
-                                    // ATENÇÃO: Isso pode causar problemas de timezone, mas é necessário para formatos desconhecidos
+                                    // BUG CORRIGIDO: Aplicar mesma lógica de correção para evitar "-1 dia"
                                     const parsed = new Date(trimmed);
                                     if (!isNaN(parsed.getTime())) {
-                                        // Usar métodos locais para evitar timezone
-                                        const year = parsed.getFullYear();
-                                        const month = String(parsed.getMonth() + 1).padStart(2, '0');
-                                        const day = String(parsed.getDate()).padStart(2, '0');
-                                        docData.DATA = `${year}-${month}-${day}`;
+                                        // Verificar se há diferença UTC/local
+                                        const utcDay = parsed.getUTCDate();
+                                        const localDay = parsed.getDate();
+                                        let year, month, day;
+                                        
+                                        if (utcDay !== localDay) {
+                                            // Date foi criado incorretamente, usar valores UTC e recriar como local
+                                            year = parsed.getUTCFullYear();
+                                            month = parsed.getUTCMonth() + 1;
+                                            day = parsed.getUTCDate();
+                                            const localDate = new Date(year, month - 1, day);
+                                            year = localDate.getFullYear();
+                                            month = localDate.getMonth() + 1;
+                                            day = localDate.getDate();
+                                        } else {
+                                            // Usar métodos locais normalmente
+                                            year = parsed.getFullYear();
+                                            month = parsed.getMonth() + 1;
+                                            day = parsed.getDate();
+                                        }
+                                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                     }
                                 }
                             }

@@ -39,12 +39,37 @@ export function formatDate(dateValue) {
             year = date.getFullYear();
         }
         // Se for objeto Date
-        // IMPORTANTE: Usar métodos locais (getDate, getMonth, getFullYear) que retornam valores locais
-        // Não usar getUTCDate, getUTCMonth, getUTCFullYear para evitar problemas de timezone
+        // BUG CORRIGIDO: Date objects criados com new Date("YYYY-MM-DD") são interpretados como UTC
+        // e quando usamos getDate() em timezone UTC-03:00, retorna o dia anterior.
+        // SOLUÇÃO: Se o Date foi criado incorretamente (diferença entre UTC e local), 
+        // recriar usando new Date(ano, mes-1, dia) que cria uma data LOCAL.
         else if (dateValue instanceof Date) {
-            day = dateValue.getDate(); // Método local, não UTC
-            month = dateValue.getMonth() + 1; // Método local, não UTC
-            year = dateValue.getFullYear(); // Método local, não UTC
+            // Verificar se há diferença entre UTC e local (indica Date criado incorretamente)
+            const utcDay = dateValue.getUTCDate();
+            const localDay = dateValue.getDate();
+            const utcMonth = dateValue.getUTCMonth();
+            const localMonth = dateValue.getMonth();
+            
+            // Se há diferença, o Date foi criado incorretamente (provavelmente de string ISO)
+            // Recriar como data local para evitar o bug "-1 dia"
+            if (utcDay !== localDay || utcMonth !== localMonth) {
+                // Extrair valores UTC (que são os valores originais da string ISO)
+                const utcYear = dateValue.getUTCFullYear();
+                const utcMonthValue = dateValue.getUTCMonth() + 1;
+                const utcDayValue = dateValue.getUTCDate();
+                
+                // Criar nova data LOCAL usando os valores UTC originais
+                // Isso garante que 2026-01-01 seja exibido como 01/01/2026, não 31/12/2025
+                const localDate = new Date(utcYear, utcMonthValue - 1, utcDayValue);
+                day = localDate.getDate();
+                month = localDate.getMonth() + 1;
+                year = localDate.getFullYear();
+            } else {
+                // Date foi criado corretamente, usar métodos locais normalmente
+                day = dateValue.getDate();
+                month = dateValue.getMonth() + 1;
+                year = dateValue.getFullYear();
+            }
         }
         // Se for string ISO (YYYY-MM-DD) - PARSEAR MANUALMENTE
         else if (typeof dateValue === 'string') {
@@ -104,14 +129,49 @@ export function formatDate(dateValue) {
             }
         }
         // Outro tipo - tentar converter
+        // ATENÇÃO: Evitar new Date() para strings ISO, mas para outros tipos pode ser necessário
         else {
-            const date = new Date(dateValue);
-            if (!isNaN(date.getTime())) {
-                day = date.getDate();
-                month = date.getMonth() + 1;
-                year = date.getFullYear();
+            // Se for número (timestamp), criar Date local
+            if (typeof dateValue === 'number') {
+                const date = new Date(dateValue);
+                if (!isNaN(date.getTime())) {
+                    day = date.getDate();
+                    month = date.getMonth() + 1;
+                    year = date.getFullYear();
+                } else {
+                    return String(dateValue);
+                }
             } else {
-                return String(dateValue);
+                // Para outros tipos, tentar converter mas com cuidado
+                // Se parecer ser uma string de data, tentar parse manual primeiro
+                const strValue = String(dateValue).trim();
+                const dateMatch = strValue.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+                if (dateMatch) {
+                    year = parseInt(dateMatch[1], 10);
+                    month = parseInt(dateMatch[2], 10);
+                    day = parseInt(dateMatch[3], 10);
+                } else {
+                    // Último recurso - usar new Date() mas aplicar mesma lógica de correção
+                    const date = new Date(dateValue);
+                    if (!isNaN(date.getTime())) {
+                        // Verificar se há diferença UTC/local
+                        const utcDay = date.getUTCDate();
+                        const localDay = date.getDate();
+                        if (utcDay !== localDay) {
+                            // Recriar como data local
+                            const localDate = new Date(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+                            day = localDate.getDate();
+                            month = localDate.getMonth() + 1;
+                            year = localDate.getFullYear();
+                        } else {
+                            day = date.getDate();
+                            month = date.getMonth() + 1;
+                            year = date.getFullYear();
+                        }
+                    } else {
+                        return String(dateValue);
+                    }
+                }
             }
         }
 
