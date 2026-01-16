@@ -77,10 +77,11 @@ export class DataService {
             }
 
             // Configurações de batching seguro (evitar quota exceeded)
-            const BATCH_SIZE = 250; // Margem segura abaixo do limite de 500
-            const THROTTLE_MS = 500; // Delay entre batches
-            const MAX_RETRIES = 5;
-            const INITIAL_BACKOFF_MS = 1000;
+            // OTIMIZADO para volumes grandes (10k+): batch menor + throttling maior
+            const BATCH_SIZE = 200; // Reduzido de 250 para 200 (margem maior de segurança)
+            const THROTTLE_MS = 1000; // Aumentado de 500ms para 1000ms (1 segundo entre batches)
+            const MAX_RETRIES = 8; // Aumentado de 5 para 8 tentativas
+            const INITIAL_BACKOFF_MS = 2000; // Aumentado de 1s para 2s (backoff mais conservador)
             
             let totalSaved = 0;
             const totalBatches = Math.ceil(data.length / BATCH_SIZE);
@@ -150,16 +151,31 @@ export class DataService {
                             error.message?.includes('maximum backoff');
                         
                         if (isTransientError && retryCount < MAX_RETRIES) {
-                            // Exponential backoff com jitter
+                            // Exponential backoff com jitter (mais conservador para quota exceeded)
                             const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 500; // 0-500ms de jitter
-                            const delay = backoffMs + jitter;
+                            const jitter = Math.random() * 1000; // Aumentado de 500ms para 1000ms de jitter
+                            const delay = Math.min(backoffMs + jitter, 60000); // Limite máximo de 60s
                             
+                            const delaySeconds = Math.round(delay / 1000);
                             console.warn(
                                 `[UPLOAD] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
                                 errorCode,
-                                `Próximo retry em ${Math.round(delay)}ms`
+                                `Aguardando ${delaySeconds}s antes do próximo retry...`
                             );
+                            
+                            // Atualizar UI durante retry
+                            if (progressCallback) {
+                                progressCallback({
+                                    batch: batchIndex + 1,
+                                    totalBatches: totalBatches,
+                                    saved: totalSaved,
+                                    total: data.length,
+                                    progress: Math.round((totalSaved / data.length) * 100),
+                                    retrying: true,
+                                    retryCount: retryCount,
+                                    nextRetryIn: delaySeconds
+                                });
+                            }
                             
                             await this.sleep(delay);
                         } else {
@@ -171,8 +187,13 @@ export class DataService {
                 }
                 
                 // Throttling entre batches (exceto no último)
+                // Throttling progressivo: aumenta delay conforme o número de batches processados
                 if (batchIndex < totalBatches - 1) {
-                    await this.sleep(THROTTLE_MS);
+                    // Throttling progressivo: batches iniciais mais rápidos, depois mais lentos
+                    const progressiveThrottle = batchIndex < 3 
+                        ? THROTTLE_MS 
+                        : THROTTLE_MS * 1.5; // Aumenta 50% após 3 batches
+                    await this.sleep(progressiveThrottle);
                 }
             }
 
@@ -549,10 +570,11 @@ export class DataService {
             }
 
             // Processar exclusão em batches com throttling e retry
-            const BATCH_SIZE = 250; // Margem segura
-            const THROTTLE_MS = 500; // Delay entre batches
-            const MAX_RETRIES = 5;
-            const INITIAL_BACKOFF_MS = 1000;
+            // CONFIGURAÇÃO ULTRA CONSERVADORA para evitar quota exceeded
+            const BATCH_SIZE = 100; // Reduzido drasticamente para evitar quota
+            const THROTTLE_MS = 2000; // 2 segundos entre batches (muito conservador)
+            const MAX_RETRIES = 10; // Mais tentativas
+            const INITIAL_BACKOFF_MS = 5000; // 5 segundos inicial (muito conservador)
             
             let deletedCount = 0;
             const docsToDelete = [];
@@ -597,14 +619,16 @@ export class DataService {
                             error.message?.includes('Quota exceeded');
                         
                         if (isTransientError && retryCount < MAX_RETRIES) {
+                            // Backoff muito mais conservador para quota exceeded
                             const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 500;
-                            const delay = backoffMs + jitter;
+                            const jitter = Math.random() * 2000; // Jitter maior
+                            const delay = Math.min(backoffMs + jitter, 120000); // Máximo 2 minutos
+                            const delaySeconds = Math.round(delay / 1000);
                             
                             console.warn(
                                 `[DELETE] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
                                 errorCode,
-                                `Próximo retry em ${Math.round(delay)}ms`
+                                `Aguardando ${delaySeconds}s (${Math.round(delaySeconds / 60)}min) antes do próximo retry...`
                             );
                             
                             await this.sleep(delay);
@@ -615,9 +639,14 @@ export class DataService {
                     }
                 }
                 
-                // Throttling entre batches
+                // Throttling progressivo entre batches (aumenta conforme avança)
                 if (batchIndex < totalBatches - 1) {
-                    await this.sleep(THROTTLE_MS);
+                    // Throttling progressivo: começa com 2s, aumenta para 3s após 5 batches
+                    const progressiveThrottle = batchIndex < 5 
+                        ? THROTTLE_MS 
+                        : THROTTLE_MS * 1.5; // 3 segundos após 5 batches
+                    console.log(`[DELETE] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch...`);
+                    await this.sleep(progressiveThrottle);
                 }
             }
 
@@ -686,10 +715,12 @@ export class DataService {
     static async clearAllData() {
         console.log('[CLEAR ALL] Iniciando limpeza completa do banco de dados...');
         
-        const BATCH_SIZE = 250;
-        const THROTTLE_MS = 500;
-        const MAX_RETRIES = 5;
-        const INITIAL_BACKOFF_MS = 1000;
+        // CONFIGURAÇÃO ULTRA CONSERVADORA para evitar quota exceeded
+        const CLEAR_BATCH_SIZE = 100; // Batches muito pequenos
+        const CLEAR_THROTTLE_MS = 3000; // 3 segundos entre batches
+        const CLEAR_MAX_RETRIES = 15; // Muitas tentativas
+        const CLEAR_INITIAL_BACKOFF = 10000; // 10 segundos inicial
+        const MAX_SNAPSHOT_RETRIES = 5; // Tentativas para buscar snapshot
         
         let totalDeleted = 0;
         const results = {
@@ -701,11 +732,24 @@ export class DataService {
             // 1. Limpar coleção 'reinteradas'
             console.log('[CLEAR ALL] Limpando coleção reinteradas...');
             let reinteradasSnapshot;
-            try {
-                reinteradasSnapshot = await db.collection(this.COLLECTION_NAME).get();
-            } catch (error) {
-                console.error('[CLEAR ALL] Erro ao buscar reinteradas:', error);
-                throw error;
+            let snapshotRetryCount = 0;
+            
+            // Tentar buscar snapshot com retry (pode falhar por quota)
+            while (snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
+                try {
+                    reinteradasSnapshot = await db.collection(this.COLLECTION_NAME).limit(10000).get();
+                    break; // Sucesso
+                } catch (error) {
+                    snapshotRetryCount++;
+                    if (error.code === 'resource-exhausted' && snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
+                        const waitTime = 5000 * snapshotRetryCount; // 5s, 10s, 15s, 20s, 25s
+                        console.warn(`[CLEAR ALL] Quota exceeded ao buscar reinteradas. Aguardando ${waitTime/1000}s antes de tentar novamente... (tentativa ${snapshotRetryCount}/${MAX_SNAPSHOT_RETRIES})`);
+                        await this.sleep(waitTime);
+                    } else {
+                        console.error('[CLEAR ALL] Erro ao buscar reinteradas:', error);
+                        throw error;
+                    }
+                }
             }
 
             const reinteradasDocs = [];
@@ -713,18 +757,19 @@ export class DataService {
                 reinteradasDocs.push(doc);
             });
 
-            const reinteradasBatches = Math.ceil(reinteradasDocs.length / BATCH_SIZE);
-            console.log(`[CLEAR ALL] Encontrados ${reinteradasDocs.length} documentos em reinteradas (${reinteradasBatches} batches)`);
+            const reinteradasBatches = Math.ceil(reinteradasDocs.length / CLEAR_BATCH_SIZE);
+            console.log(`[CLEAR ALL] Encontrados ${reinteradasDocs.length} documentos em reinteradas (${reinteradasBatches} batches de ${CLEAR_BATCH_SIZE})`);
 
             for (let batchIndex = 0; batchIndex < reinteradasBatches; batchIndex++) {
-                const startIndex = batchIndex * BATCH_SIZE;
-                const endIndex = Math.min(startIndex + BATCH_SIZE, reinteradasDocs.length);
+                const startIndex = batchIndex * CLEAR_BATCH_SIZE;
+                const endIndex = Math.min(startIndex + CLEAR_BATCH_SIZE, reinteradasDocs.length);
                 const batchDocs = reinteradasDocs.slice(startIndex, endIndex);
                 
-                let retryCount = 0;
+                let batchRetryCount = 0;
                 let batchSuccess = false;
                 
-                while (retryCount < MAX_RETRIES && !batchSuccess) {
+                // Retry com exponential backoff muito conservador
+                while (batchRetryCount < CLEAR_MAX_RETRIES && !batchSuccess) {
                     try {
                         const batch = db.batch();
                         batchDocs.forEach(doc => {
@@ -736,42 +781,61 @@ export class DataService {
                         totalDeleted += batchDocs.length;
                         batchSuccess = true;
                         
-                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${reinteradasBatches} de reinteradas commitado: ${batchDocs.length} documentos (${results.reinteradas} total)`);
+                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${reinteradasBatches} de reinteradas commitado: ${batchDocs.length} documentos (${results.reinteradas}/${reinteradasDocs.length} total)`);
                         
                     } catch (error) {
-                        retryCount++;
+                        batchRetryCount++;
                         const errorCode = error.code || error.message;
                         const isTransientError = 
                             errorCode === 'resource-exhausted' ||
                             errorCode === 'unavailable' ||
                             errorCode === 'deadline-exceeded';
                         
-                        if (isTransientError && retryCount < MAX_RETRIES) {
-                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 500;
-                            const delay = backoffMs + jitter;
+                        if (isTransientError && batchRetryCount < CLEAR_MAX_RETRIES) {
+                            const backoffMs = CLEAR_INITIAL_BACKOFF * Math.pow(2, batchRetryCount - 1);
+                            const jitter = Math.random() * 5000;
+                            const delay = Math.min(backoffMs + jitter, 180000); // Máximo 3 minutos
+                            const delaySeconds = Math.round(delay / 1000);
                             
-                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de reinteradas (tentativa ${retryCount}/${MAX_RETRIES}): ${errorCode}, próximo retry em ${Math.round(delay)}ms`);
+                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de reinteradas (tentativa ${batchRetryCount}/${CLEAR_MAX_RETRIES}): ${errorCode}, aguardando ${delaySeconds}s (${Math.round(delaySeconds / 60)}min)...`);
                             await this.sleep(delay);
                         } else {
-                            throw error;
+                            console.error(`[CLEAR ALL] Erro ao excluir batch ${batchIndex + 1} de reinteradas após ${batchRetryCount} tentativas:`, error);
+                            // Continuar com próximo batch mesmo se este falhar (não parar tudo)
+                            break;
                         }
                     }
                 }
                 
+                // Throttling progressivo muito conservador
                 if (batchIndex < reinteradasBatches - 1) {
-                    await this.sleep(THROTTLE_MS);
+                    const progressiveThrottle = batchIndex < 3 ? CLEAR_THROTTLE_MS : CLEAR_THROTTLE_MS * 2; // 6s após 3 batches
+                    console.log(`[CLEAR ALL] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch de reinteradas...`);
+                    await this.sleep(progressiveThrottle);
                 }
             }
 
             // 2. Limpar coleção 'uploads'
             console.log('[CLEAR ALL] Limpando coleção uploads...');
             let uploadsSnapshot;
-            try {
-                uploadsSnapshot = await db.collection(this.UPLOADS_COLLECTION).get();
-            } catch (error) {
-                console.error('[CLEAR ALL] Erro ao buscar uploads:', error);
-                throw error;
+            snapshotRetryCount = 0;
+            
+            // Tentar buscar snapshot com retry
+            while (snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
+                try {
+                    uploadsSnapshot = await db.collection(this.UPLOADS_COLLECTION).limit(1000).get();
+                    break; // Sucesso
+                } catch (error) {
+                    snapshotRetryCount++;
+                    if (error.code === 'resource-exhausted' && snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
+                        const waitTime = 5000 * snapshotRetryCount;
+                        console.warn(`[CLEAR ALL] Quota exceeded ao buscar uploads. Aguardando ${waitTime/1000}s... (tentativa ${snapshotRetryCount}/${MAX_SNAPSHOT_RETRIES})`);
+                        await this.sleep(waitTime);
+                    } else {
+                        console.error('[CLEAR ALL] Erro ao buscar uploads:', error);
+                        throw error;
+                    }
+                }
             }
 
             const uploadsDocs = [];
@@ -779,18 +843,19 @@ export class DataService {
                 uploadsDocs.push(doc);
             });
 
-            const uploadsBatches = Math.ceil(uploadsDocs.length / BATCH_SIZE);
-            console.log(`[CLEAR ALL] Encontrados ${uploadsDocs.length} documentos em uploads (${uploadsBatches} batches)`);
+            const uploadsBatches = Math.ceil(uploadsDocs.length / CLEAR_BATCH_SIZE);
+            console.log(`[CLEAR ALL] Encontrados ${uploadsDocs.length} documentos em uploads (${uploadsBatches} batches de ${CLEAR_BATCH_SIZE})`);
 
             for (let batchIndex = 0; batchIndex < uploadsBatches; batchIndex++) {
-                const startIndex = batchIndex * BATCH_SIZE;
-                const endIndex = Math.min(startIndex + BATCH_SIZE, uploadsDocs.length);
+                const startIndex = batchIndex * CLEAR_BATCH_SIZE;
+                const endIndex = Math.min(startIndex + CLEAR_BATCH_SIZE, uploadsDocs.length);
                 const batchDocs = uploadsDocs.slice(startIndex, endIndex);
                 
-                let retryCount = 0;
+                let batchRetryCount = 0;
                 let batchSuccess = false;
                 
-                while (retryCount < MAX_RETRIES && !batchSuccess) {
+                // Retry com exponential backoff muito conservador
+                while (batchRetryCount < CLEAR_MAX_RETRIES && !batchSuccess) {
                     try {
                         const batch = db.batch();
                         batchDocs.forEach(doc => {
@@ -802,31 +867,37 @@ export class DataService {
                         totalDeleted += batchDocs.length;
                         batchSuccess = true;
                         
-                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${uploadsBatches} de uploads commitado: ${batchDocs.length} documentos (${results.uploads} total)`);
+                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${uploadsBatches} de uploads commitado: ${batchDocs.length} documentos (${results.uploads}/${uploadsDocs.length} total)`);
                         
                     } catch (error) {
-                        retryCount++;
+                        batchRetryCount++;
                         const errorCode = error.code || error.message;
                         const isTransientError = 
                             errorCode === 'resource-exhausted' ||
                             errorCode === 'unavailable' ||
                             errorCode === 'deadline-exceeded';
                         
-                        if (isTransientError && retryCount < MAX_RETRIES) {
-                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 500;
-                            const delay = backoffMs + jitter;
+                        if (isTransientError && batchRetryCount < CLEAR_MAX_RETRIES) {
+                            const backoffMs = CLEAR_INITIAL_BACKOFF * Math.pow(2, batchRetryCount - 1);
+                            const jitter = Math.random() * 5000;
+                            const delay = Math.min(backoffMs + jitter, 180000); // Máximo 3 minutos
+                            const delaySeconds = Math.round(delay / 1000);
                             
-                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de uploads (tentativa ${retryCount}/${MAX_RETRIES}): ${errorCode}, próximo retry em ${Math.round(delay)}ms`);
+                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de uploads (tentativa ${batchRetryCount}/${CLEAR_MAX_RETRIES}): ${errorCode}, aguardando ${delaySeconds}s...`);
                             await this.sleep(delay);
                         } else {
-                            throw error;
+                            console.error(`[CLEAR ALL] Erro ao excluir batch ${batchIndex + 1} de uploads após ${batchRetryCount} tentativas:`, error);
+                            // Continuar com próximo batch
+                            break;
                         }
                     }
                 }
                 
+                // Throttling progressivo
                 if (batchIndex < uploadsBatches - 1) {
-                    await this.sleep(THROTTLE_MS);
+                    const progressiveThrottle = batchIndex < 3 ? CLEAR_THROTTLE_MS : CLEAR_THROTTLE_MS * 2;
+                    console.log(`[CLEAR ALL] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch de uploads...`);
+                    await this.sleep(progressiveThrottle);
                 }
             }
 

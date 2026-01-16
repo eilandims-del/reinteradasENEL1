@@ -208,7 +208,20 @@ async function handleFileUpload(file) {
         const updateProgress = (progressInfo) => {
             const progress = progressInfo.progress;
             progressFill.style.width = `${70 + (progress * 0.3)}%`; // 70% a 100%
-            progressText.textContent = `Salvando batch ${progressInfo.batch}/${progressInfo.totalBatches}... (${progressInfo.saved}/${progressInfo.total} registros - ${progress}%)`;
+            
+            // Mensagem diferente se estiver em retry
+            if (progressInfo.retrying) {
+                progressText.textContent = `Aguardando retry (tentativa ${progressInfo.retryCount})... Próximo em ${progressInfo.nextRetryIn}s`;
+                progressText.style.color = 'var(--warning)';
+            } else {
+                progressText.textContent = `Salvando batch ${progressInfo.batch}/${progressInfo.totalBatches}... (${progressInfo.saved}/${progressInfo.total} registros - ${progress}%)`;
+                progressText.style.color = '';
+            }
+            
+            // Log adicional para debug
+            if (progressInfo.batch % 5 === 0 || progressInfo.batch === progressInfo.totalBatches) {
+                console.log(`[UPLOAD UI] Progresso: ${progress}% - Batch ${progressInfo.batch}/${progressInfo.totalBatches}`);
+            }
         };
 
         // Salvar no Firestore com callback de progresso
@@ -388,9 +401,13 @@ async function handleClearAll() {
     historyContainer.innerHTML = `
         <div class="loading-spinner">
             <i class="fas fa-spinner fa-spin"></i> 
-            <p>Limpando TODOS os dados do banco...</p>
+            <p><strong>Limpando TODOS os dados do banco...</strong></p>
             <p style="font-size: 0.9rem; color: var(--medium-gray); margin-top: 0.5rem;">
-                Isso pode levar vários minutos dependendo do volume de dados.
+                ⚠️ Isso pode levar VÁRIOS MINUTOS dependendo do volume de dados.<br>
+                O sistema está configurado para evitar quota exceeded, então pode ser lento mas seguro.
+            </p>
+            <p style="font-size: 0.85rem; color: var(--warning); margin-top: 0.5rem; font-weight: 600;">
+                ⏱️ Aguarde... Não feche esta página!
             </p>
         </div>
     `;
