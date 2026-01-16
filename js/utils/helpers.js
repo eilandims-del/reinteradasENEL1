@@ -39,25 +39,24 @@ export function formatDate(dateValue) {
             year = date.getFullYear();
         }
         // Se for objeto Date
+        // IMPORTANTE: Usar métodos locais (getDate, getMonth, getFullYear) que retornam valores locais
+        // Não usar getUTCDate, getUTCMonth, getUTCFullYear para evitar problemas de timezone
         else if (dateValue instanceof Date) {
-            day = dateValue.getDate();
-            month = dateValue.getMonth() + 1;
-            year = dateValue.getFullYear();
+            day = dateValue.getDate(); // Método local, não UTC
+            month = dateValue.getMonth() + 1; // Método local, não UTC
+            year = dateValue.getFullYear(); // Método local, não UTC
         }
         // Se for string ISO (YYYY-MM-DD) - PARSEAR MANUALMENTE
         else if (typeof dateValue === 'string') {
             const trimmed = dateValue.trim();
             
-            // Formato ISO: YYYY-MM-DD - PARSEAR MANUALMENTE (NUNCA new Date())
-            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-                const parts = trimmed.split('-');
-                if (parts.length === 3) {
-                    year = parseInt(parts[0], 10);
-                    month = parseInt(parts[1], 10);
-                    day = parseInt(parts[2], 10);
-                } else {
-                    return dateValue; // Retornar original se não conseguir parsear
-                }
+            // Formato ISO: YYYY-MM-DD (com ou sem hora) - PARSEAR MANUALMENTE (NUNCA new Date())
+            // Aceita YYYY-MM-DD ou YYYY-MM-DDTHH:mm:ss ou YYYY-MM-DD HH:mm:ss
+            const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s]|$)/);
+            if (isoMatch) {
+                year = parseInt(isoMatch[1], 10);
+                month = parseInt(isoMatch[2], 10);
+                day = parseInt(isoMatch[3], 10);
             }
             // Formato brasileiro: DD/MM/YYYY
             else if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/.test(trimmed)) {
@@ -70,16 +69,37 @@ export function formatDate(dateValue) {
                     return dateValue;
                 }
             }
-            // Outro formato - tentar como último recurso
-            else {
-                // Tentar parse padrão apenas se não for formato ISO
-                const date = new Date(trimmed);
-                if (!isNaN(date.getTime())) {
-                    day = date.getDate();
-                    month = date.getMonth() + 1;
-                    year = date.getFullYear();
+            // Formato reverso: YYYY/MM/DD ou YYYY-MM-DD (já tratado acima, mas mantido para compatibilidade)
+            else if (/^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/.test(trimmed)) {
+                const parts = trimmed.split(/[\/\-\.]/);
+                if (parts.length === 3) {
+                    year = parseInt(parts[0], 10);
+                    month = parseInt(parts[1], 10);
+                    day = parseInt(parts[2], 10);
                 } else {
-                    return dateValue; // Retornar original se não conseguir parsear
+                    return dateValue;
+                }
+            }
+            // Outro formato - tentar como último recurso (evitar new Date() para strings ISO)
+            else {
+                // Se parecer ser uma data ISO mas não passou no teste anterior, tentar parse manual
+                const fallbackMatch = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+                if (fallbackMatch) {
+                    year = parseInt(fallbackMatch[1], 10);
+                    month = parseInt(fallbackMatch[2], 10);
+                    day = parseInt(fallbackMatch[3], 10);
+                } else {
+                    // Último recurso - usar new Date() apenas se não for formato ISO
+                    // ATENÇÃO: Isso pode causar problemas de timezone, mas é necessário para formatos desconhecidos
+                    const date = new Date(trimmed);
+                    if (!isNaN(date.getTime())) {
+                        // Usar métodos locais para evitar timezone
+                        day = date.getDate();
+                        month = date.getMonth() + 1;
+                        year = date.getFullYear();
+                    } else {
+                        return dateValue; // Retornar original se não conseguir parsear
+                    }
                 }
             }
         }

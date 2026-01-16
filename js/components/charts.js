@@ -24,11 +24,11 @@ export function renderChartCausa(data) {
     const labels = ranking.map(item => item.causa);
     const values = ranking.map(item => item.count);
     
-    // Cores ENEL
+    // Paleta de cores profissional ENEL - Gradientes modernos
     const colors = [
-        '#003876', '#0066CC', '#0099FF', '#4DB8FF',
-        '#80CCFF', '#B3E0FF', '#E6F2FF', '#FFD700',
-        '#FFA500', '#FF6B6B'
+        '#0A4A8C', '#1E7CE8', '#00B4FF', '#4DC8FF',
+        '#80D9FF', '#B3E8FF', '#E6F4FD', '#FFD700',
+        '#FFB84D', '#FF8C69', '#10B981', '#F59E0B'
     ];
 
     chartCausa = new Chart(ctx, {
@@ -39,7 +39,9 @@ export function renderChartCausa(data) {
                 data: values,
                 backgroundColor: colors.slice(0, labels.length),
                 borderColor: '#FFFFFF',
-                borderWidth: 2
+                borderWidth: 3,
+                hoverBorderWidth: 4,
+                hoverOffset: 8
             }]
         },
         options: {
@@ -49,21 +51,61 @@ export function renderChartCausa(data) {
                 legend: {
                     position: 'right',
                     labels: {
-                        padding: 15,
+                        padding: 18,
                         font: {
-                            size: 12
-                        }
+                            size: 13,
+                            weight: '600',
+                            family: "'Inter', 'Segoe UI', sans-serif"
+                        },
+                        usePointStyle: true,
+                        pointStyle: 'circle',
+                        color: '#1A1F2E'
                     }
                 },
                 title: {
                     display: true,
                     text: 'Top 10 Causas',
                     font: {
-                        size: 16,
-                        weight: 'bold'
+                        size: 18,
+                        weight: '700',
+                        family: "'Inter', 'Segoe UI', sans-serif"
                     },
-                    color: '#003876'
+                    color: '#0A4A8C',
+                    padding: {
+                        top: 10,
+                        bottom: 20
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 31, 46, 0.95)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: '600'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    borderColor: '#1E7CE8',
+                    borderWidth: 2,
+                    cornerRadius: 8,
+                    displayColors: true,
+                    callbacks: {
+                        label: function(context) {
+                            const label = context.label || '';
+                            const value = context.parsed || 0;
+                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${label}: ${value} (${percentage}%)`;
+                        }
+                    }
                 }
+            },
+            animation: {
+                animateRotate: true,
+                animateScale: true,
+                duration: 1000,
+                easing: 'easeOutQuart'
             }
         }
     });
@@ -93,13 +135,17 @@ export function renderChartAlimentador(data) {
             datasets: [{
                 label: 'Ocorrências',
                 data: values,
-                backgroundColor: 'rgba(0, 102, 204, 0.2)',
-                borderColor: '#0066CC',
-                borderWidth: 2,
-                pointBackgroundColor: '#003876',
+                backgroundColor: 'rgba(30, 124, 232, 0.25)',
+                borderColor: '#1E7CE8',
+                borderWidth: 3,
+                pointBackgroundColor: '#0A4A8C',
                 pointBorderColor: '#FFFFFF',
-                pointHoverBackgroundColor: '#0066CC',
-                pointHoverBorderColor: '#FFFFFF'
+                pointBorderWidth: 3,
+                pointRadius: 5,
+                pointHoverBackgroundColor: '#00B4FF',
+                pointHoverBorderColor: '#FFFFFF',
+                pointHoverRadius: 7,
+                pointHoverBorderWidth: 3
             }]
         },
         options: {
@@ -109,10 +155,31 @@ export function renderChartAlimentador(data) {
                 r: {
                     beginAtZero: true,
                     ticks: {
-                        stepSize: 1
+                        stepSize: 1,
+                        font: {
+                            size: 11,
+                            weight: '600',
+                            family: "'Inter', 'Segoe UI', sans-serif"
+                        },
+                        color: '#5A6C7D',
+                        backdropColor: 'transparent'
                     },
                     grid: {
-                        color: 'rgba(0, 0, 0, 0.1)'
+                        color: 'rgba(30, 124, 232, 0.15)',
+                        lineWidth: 1.5
+                    },
+                    angleLines: {
+                        color: 'rgba(30, 124, 232, 0.1)',
+                        lineWidth: 1.5
+                    },
+                    pointLabels: {
+                        font: {
+                            size: 12,
+                            weight: '600',
+                            family: "'Inter', 'Segoe UI', sans-serif"
+                        },
+                        color: '#1A1F2E',
+                        padding: 12
                     }
                 }
             },
@@ -124,11 +191,35 @@ export function renderChartAlimentador(data) {
                     display: true,
                     text: 'Top 10 Alimentadores',
                     font: {
-                        size: 16,
-                        weight: 'bold'
+                        size: 18,
+                        weight: '700',
+                        family: "'Inter', 'Segoe UI', sans-serif"
                     },
-                    color: '#003876'
+                    color: '#0A4A8C',
+                    padding: {
+                        top: 10,
+                        bottom: 20
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 31, 46, 0.95)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: '600'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
+                    borderColor: '#1E7CE8',
+                    borderWidth: 2,
+                    cornerRadius: 8,
+                    displayColors: true
                 }
+            },
+            animation: {
+                duration: 1200,
+                easing: 'easeOutQuart'
             }
         }
     });

@@ -2,6 +2,8 @@
  * Componente Modal - Gerenciamento de Modais
  */
 
+import { formatDate } from '../utils/helpers.js';
+
 /**
  * Abrir modal
  */
@@ -70,15 +72,15 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
     ocorrencias.forEach((ocorrencia, index) => {
         const ocorrenciaDiv = document.createElement('div');
         ocorrenciaDiv.className = 'ocorrencia-group';
-        ocorrenciaDiv.style.marginBottom = '2rem';
-        ocorrenciaDiv.style.paddingBottom = '2rem';
-        ocorrenciaDiv.style.borderBottom = index < ocorrencias.length - 1 ? '2px solid var(--light-gray)' : 'none';
+        if (index < ocorrencias.length - 1) {
+            ocorrenciaDiv.style.borderBottom = '2px solid rgba(30, 124, 232, 0.1)';
+            ocorrenciaDiv.style.marginBottom = '2rem';
+            ocorrenciaDiv.style.paddingBottom = '2rem';
+        }
 
         // Adicionar título da ocorrência
         const titulo = document.createElement('h3');
         titulo.textContent = `Ocorrência ${index + 1} de ${ocorrencias.length}`;
-        titulo.style.color = 'var(--primary-blue)';
-        titulo.style.marginBottom = '1rem';
         ocorrenciaDiv.appendChild(titulo);
 
         // Campos fixos
@@ -193,93 +195,3 @@ function formatIncidenciaUrl(incidencia) {
     return `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${cleaned}`;
 }
 
-/**
- * Formatar data para exibição (DD/MM/YYYY)
- * IMPORTANTE: Parse manual de strings ISO para evitar problemas de timezone
- * Aceita string ISO, Date object, Timestamp do Firestore
- */
-function formatDate(dateValue) {
-    if (!dateValue) return 'N/A';
-    
-    try {
-        let day, month, year;
-
-        // Se for Timestamp do Firestore
-        if (dateValue && typeof dateValue.toDate === 'function') {
-            const date = dateValue.toDate(); // Já é Date local
-            day = date.getDate();
-            month = date.getMonth() + 1;
-            year = date.getFullYear();
-        }
-        // Se for objeto Date
-        else if (dateValue instanceof Date) {
-            day = dateValue.getDate();
-            month = dateValue.getMonth() + 1;
-            year = dateValue.getFullYear();
-        }
-        // Se for string ISO (YYYY-MM-DD) - PARSEAR MANUALMENTE
-        else if (typeof dateValue === 'string') {
-            const trimmed = dateValue.trim();
-            
-            // Formato ISO: YYYY-MM-DD - PARSEAR MANUALMENTE (NUNCA new Date())
-            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-                const parts = trimmed.split('-');
-                if (parts.length === 3) {
-                    year = parseInt(parts[0], 10);
-                    month = parseInt(parts[1], 10);
-                    day = parseInt(parts[2], 10);
-                } else {
-                    return dateValue || 'N/A';
-                }
-            }
-            // Formato brasileiro: DD/MM/YYYY
-            else if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/.test(trimmed)) {
-                const parts = trimmed.split(/[\/\-\.]/);
-                if (parts.length === 3) {
-                    day = parseInt(parts[0], 10);
-                    month = parseInt(parts[1], 10);
-                    year = parseInt(parts[2], 10);
-                } else {
-                    return dateValue || 'N/A';
-                }
-            }
-            // Outro formato - tentar como último recurso
-            else {
-                const date = new Date(trimmed);
-                if (!isNaN(date.getTime())) {
-                    day = date.getDate();
-                    month = date.getMonth() + 1;
-                    year = date.getFullYear();
-                } else {
-                    return dateValue || 'N/A';
-                }
-            }
-        }
-        // Outro tipo
-        else {
-            const date = new Date(dateValue);
-            if (!isNaN(date.getTime())) {
-                day = date.getDate();
-                month = date.getMonth() + 1;
-                year = date.getFullYear();
-            } else {
-                return String(dateValue || 'N/A');
-            }
-        }
-
-        // Validar valores
-        if (!day || !month || !year) {
-            return String(dateValue || 'N/A');
-        }
-
-        // Formatar para DD/MM/YYYY sem aplicar timezone
-        const dayStr = String(day).padStart(2, '0');
-        const monthStr = String(month).padStart(2, '0');
-        const yearStr = String(year);
-
-        return `${dayStr}/${monthStr}/${yearStr}`;
-    } catch (e) {
-        console.warn('Erro ao formatar data:', dateValue, e);
-        return String(dateValue || 'N/A');
-    }
-}

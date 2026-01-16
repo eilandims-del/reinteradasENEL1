@@ -168,13 +168,24 @@ export class DataService {
                                     docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                 }
                             } else {
-                                // Último recurso - usar new Date() apenas se necessário
-                                const parsed = new Date(trimmed);
-                                if (!isNaN(parsed.getTime())) {
-                                    const year = parsed.getFullYear();
-                                    const month = String(parsed.getMonth() + 1).padStart(2, '0');
-                                    const day = String(parsed.getDate()).padStart(2, '0');
-                                    docData.DATA = `${year}-${month}-${day}`;
+                                // Tentar parse manual de formato YYYY/MM/DD ou YYYY-MM-DD
+                                const reverseMatch = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+                                if (reverseMatch) {
+                                    const year = parseInt(reverseMatch[1], 10);
+                                    const month = parseInt(reverseMatch[2], 10);
+                                    const day = parseInt(reverseMatch[3], 10);
+                                    docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                } else {
+                                    // Último recurso - usar new Date() apenas se necessário
+                                    // ATENÇÃO: Isso pode causar problemas de timezone, mas é necessário para formatos desconhecidos
+                                    const parsed = new Date(trimmed);
+                                    if (!isNaN(parsed.getTime())) {
+                                        // Usar métodos locais para evitar timezone
+                                        const year = parsed.getFullYear();
+                                        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+                                        const day = String(parsed.getDate()).padStart(2, '0');
+                                        docData.DATA = `${year}-${month}-${day}`;
+                                    }
                                 }
                             }
                         }
