@@ -154,6 +154,12 @@ FILE: index.html
                     <button id="btnAdicionarInfo" class="btn btn-sm btn-secondary">
                         <i class="fas fa-plus"></i> Adicionar Info
                     </button>
+
+                    <!-- NOVO: Exportar Excel -->
+                    <button id="btnExportExcel" class="btn btn-sm btn-secondary" title="Exportar tabela para Excel">
+                        <i class="fas fa-file-excel"></i> Exportar
+                    </button>
+
                     <button class="modal-close" id="fecharModal">
                         <i class="fas fa-times"></i>
                     </button>
@@ -201,6 +207,9 @@ FILE: index.html
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
+    <!-- NOVO: SheetJS para exportar Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/services/firebase-service.js"></script>

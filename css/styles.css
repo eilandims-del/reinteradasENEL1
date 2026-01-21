@@ -678,4 +678,57 @@ body::before {
     }
   }
   
-  
+  /* ===========================
+   AJUSTE FINAL - HEADER MAIS BAIXO (override)
+   Cole NO FINAL do css/styles.css
+   =========================== */
+
+.header{
+  padding: .75rem 0 !important;   /* antes: 1.5rem 0 */
+}
+
+.header .header-logo{
+  height: 58px !important;        /* antes: 92px */
+  max-width: 220px !important;    /* antes: 320px */
+}
+
+.header .header-title{
+  font-size: 1.25rem !important;  /* antes: 1.75rem */
+  line-height: 1.1 !important;
+  margin: 0 !important;
+}
+
+.header .header-subtitle{
+  font-size: .85rem !important;   /* antes: 1rem */
+  margin: 0 !important;
+  opacity: .92 !important;
+}
+
+/* deixa o header mais “justo” horizontalmente */
+.header-left{
+  gap: .9rem !important;
+}
+
+/* botões do header mais compactos */
+.header-actions .btn{
+  padding: .4rem .75rem !important;
+  font-size: .82rem !important;
+}
+
+/* mobile mais compacto ainda */
+@media (max-width: 600px){
+  .header{ padding: .6rem 0 !important; }
+
+  .header .header-logo{
+    height: 46px !important;
+    max-width: 180px !important;
+  }
+
+  .header .header-title{ font-size: 1.05rem !important; }
+  .header .header-subtitle{ font-size: .72rem !important; }
+
+  .header-actions .btn{
+    padding: .35rem .6rem !important;
+    font-size: .78rem !important;
+  }
+}

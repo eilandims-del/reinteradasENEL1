@@ -44,17 +44,17 @@ export function initModalEvents() {
       if (activeModal) closeModal(activeModal.id);
     }
   });
-      // Fechar modal ao clicar no botão X
-      document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.modal-close');
-        if (!btn) return;
 
-        const modal = btn.closest('.modal');
-        if (modal) {
-            closeModal(modal.id);
-        }
-    });
+  // Fechar modal ao clicar no botão X (delegação)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.modal-close');
+    if (!btn) return;
 
+    const modal = btn.closest('.modal');
+    if (modal) {
+      closeModal(modal.id);
+    }
+  });
 }
 
 /**
@@ -225,4 +225,80 @@ function formatIncidenciaUrl(incidencia) {
   if (!incidencia) return null;
   const cleaned = String(incidencia).trim();
   return `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${cleaned}`;
+}
+
+/**
+ * Exportar a tabela de detalhes (modal) para Excel (.xlsx)
+ * Requer SheetJS carregado via CDN (window.XLSX)
+ */
+export function exportDetailsToExcel() {
+  const modalContent = document.getElementById('detalhesConteudo');
+  if (!modalContent) return;
+
+  const table = modalContent.querySelector('table.detalhes-table');
+  if (!table) {
+    alert('Nenhuma tabela encontrada para exportar.');
+    return;
+  }
+
+  if (!window.XLSX) {
+    alert('Biblioteca XLSX não carregada. Verifique se o script do SheetJS foi incluído no index.html.');
+    return;
+  }
+
+  // Extrai dados da tabela (thead + tbody) para matriz (AOA)
+  const aoa = [];
+
+  // Cabeçalho
+  const headCells = table.querySelectorAll('thead th');
+  const headerRow = Array.from(headCells).map(th => (th.textContent || '').trim());
+  aoa.push(headerRow);
+
+  // Linhas
+  const bodyRows = table.querySelectorAll('tbody tr');
+  bodyRows.forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    const row = Array.from(cells).map(td => {
+      const a = td.querySelector('a');
+      const txt = (a ? a.textContent : td.textContent) || '';
+      return String(txt).trim();
+    });
+
+    // Evita exportar a linha "Nenhuma ocorrência encontrada."
+    const isEmptyRow = row.length === 1 && /nenhuma ocorr/i.test(row[0]);
+    if (!isEmptyRow) aoa.push(row);
+  });
+
+  if (aoa.length <= 1) {
+    alert('Sem ocorrências para exportar.');
+    return;
+  }
+
+  // Nome do arquivo
+  const elemento = (modalContent.dataset.elemento || 'ELEMENTO').toString().trim();
+  const safeElemento = elemento.replace(/[\\/:*?"<>|]/g, '-');
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const fileName = `Detalhes_${safeElemento}_${stamp}.xlsx`;
+
+  // Gera worksheet
+  const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+
+  // Ajuste simples de largura das colunas
+  const colWidths = headerRow.map((h, i) => {
+    let maxLen = String(h || '').length;
+    for (let r = 1; r < aoa.length; r++) {
+      maxLen = Math.max(maxLen, String(aoa[r][i] || '').length);
+    }
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 60) };
+  });
+  ws['!cols'] = colWidths;
+
+  // Workbook
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Detalhes');
+
+  // Download
+  window.XLSX.writeFile(wb, fileName);
 }

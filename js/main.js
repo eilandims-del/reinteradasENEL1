@@ -7,7 +7,7 @@ import { filterByDateRange, getAllColumns, getOcorrenciasByElemento } from './se
 import { updateRanking, generateRankingText, setElementoFilter, setElementoSearch } from './components/ranking.js';
 import { updateCharts } from './components/charts.js';
 /** import { updateHeatmap, initMap } from './components/mapa.js';  */
-import { openModal, closeModal, initModalEvents, fillDetailsModal } from './components/modal.js';
+import { openModal, closeModal, initModalEvents, fillDetailsModal, exportDetailsToExcel } from './components/modal.js';
 import { copyToClipboard, showToast, debounce } from './utils/helpers.js';
 
 let currentData = [];
@@ -28,11 +28,14 @@ async function init() {
  * Inicializar event listeners
  */
 function initEventListeners() {
-  // Fechar modal detalhes (X)
+  // Fechar modal detalhes (X) - (opcional, redundante com delegação do modal.js, mas ok)
   document.getElementById('fecharModal')?.addEventListener('click', () => closeModal('modalDetalhes'));
 
-  // Fechar modal info (X)
+  // Fechar modal info (X) - (opcional, redundante com delegação do modal.js, mas ok)
   document.getElementById('fecharModalInfo')?.addEventListener('click', () => closeModal('modalAdicionarInfo'));
+
+  // Exportar Excel (Detalhes do ELEMENTO)
+  document.getElementById('btnExportExcel')?.addEventListener('click', exportDetailsToExcel);
 
   // Abrir/confirmar info adicional
   document.getElementById('btnAdicionarInfo')?.addEventListener('click', openModalAddInfo);
