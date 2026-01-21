@@ -174,11 +174,32 @@ function openModalAddInfo() {
 
   // normalizado sem ponto, por isso ALIMENT (não ALIMENT.)
   const fixedColumns = ['INCIDENCIA', 'CAUSA', 'ALIMENT', 'DATA', 'ELEMENTO', 'CONJUNTO'];
+  // Colunas que NÃO devem aparecer no "Adicionar Info"
+  const hiddenCols = new Set([
+    'TMD',
+    'AVISOS',
+    'CHI',
+    'TMA',
+    'NT',
+    'DURACAO TOTAL'
+  ].map(c => c.trim().toUpperCase()));
 
   const nonFixedColumns = allColumns.filter(col => {
     const normalized = String(col).toUpperCase().trim().replace(/\./g, '');
-    return !fixedColumns.includes(normalized);
+
+    // não mostrar colunas fixas
+    if (fixedColumns.includes(normalized)) return false;
+
+    // não mostrar colunas bloqueadas (comparando também sem ponto)
+    const normalizedNoDot = normalized.replace(/\./g, '');
+    const normalizedWithDotSafe = String(col).toUpperCase().trim(); // para nomes com espaço/ponto como "CLI. AFE"
+
+    if (hiddenCols.has(normalizedWithDotSafe)) return false;
+    if (hiddenCols.has(normalizedNoDot)) return false;
+
+    return true;
   });
+
 
   const listaColunas = document.getElementById('listaColunas');
   if (!listaColunas) return;

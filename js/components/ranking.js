@@ -239,14 +239,12 @@ export function generateRankingText() {
   sliced.forEach((item, idx) => {
     const total = Number(item.count) || 0;
 
-    const topCausa = getTopByField(item.ocorrencias || [], 'CAUSA');
-    const causaNome = topCausa?.name ? sanitizeOneLine(topCausa.name) : 'Não informado';
-    const causaQtd = topCausa?.count ? topCausa.count : 0;
-    const causaPct = total ? Math.round((causaQtd / total) * 100) : 0;
+    const causasStr = getAllCausesLine(item.ocorrencias || []);
 
     linhas.push(`*${String(idx + 1).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total}x)*`);
-    linhas.push(`   └─ 🔹 Causa predominante: ${causaNome}  *(${causaQtd}x | ${causaPct}%)*`);
+    linhas.push(`   └─ 🔹 Causa : ${causasStr}`);
     linhas.push('');
+    
   });
 
   if (restantes > 0) {
@@ -370,6 +368,37 @@ function generateRankingByField(data, field) {
     .map(([name, count]) => ({ name, count, ocorrencias: ocorrenciasMap.get(name) }))
     .sort((a, b) => b.count - a.count);
 }
+
+function getAllCausesLine(ocorrencias) {
+  if (!Array.isArray(ocorrencias) || !ocorrencias.length) return 'Não informado';
+
+  // Conta frequência das causas (normalizando)
+  const counts = new Map();
+
+  for (const row of ocorrencias) {
+    const raw = String(getFieldValue(row, 'CAUSA') || '').trim();
+    const clean = sanitizeOneLine(raw);
+    if (!clean) continue;
+
+    counts.set(clean, (counts.get(clean) || 0) + 1);
+  }
+
+  if (counts.size === 0) return 'Não informado';
+
+  // Ordena por frequência desc e monta lista única (sem repetir)
+  const sorted = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
+
+  // Evita estourar no WhatsApp (ajuste se quiser)
+  const MAX_CAUSAS = 12;
+  const sliced = sorted.slice(0, MAX_CAUSAS);
+  const rest = sorted.length - sliced.length;
+
+  const base = sliced.join(', ');
+  return rest > 0 ? `${base} …(+${rest})` : base;
+}
+
 
 function renderRankingGeneric(containerId, ranking, onClick) {
   const container = document.getElementById(containerId);
