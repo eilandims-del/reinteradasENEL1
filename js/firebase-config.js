@@ -5,13 +5,14 @@
 
 // TODO: Configure suas credenciais do Firebase
 const firebaseConfig = {
-    apiKey: "AIzaSyBGoHI9AO-vHhZuwO8bUCgM19XbAe1ZrKQ",
-    authDomain: "enel-reintera.firebaseapp.com",
-    projectId: "enel-reintera",
-    storageBucket: "enel-reintera.firebasestorage.app",
-    messagingSenderId: "5266075645",
-    appId: "1:5266075645:web:7bbda69f4036822371b394"
-};
+    apiKey: "AIzaSyBjJLveyhydYG8Tpr_OT794W8xWfy2SNck",
+    authDomain: "rett-ff48d.firebaseapp.com",
+    projectId: "rett-ff48d",
+    storageBucket: "rett-ff48d.firebasestorage.app",
+    messagingSenderId: "769230640017",
+    appId: "1:769230640017:web:b445c5f49a2dbc456d0030",
+    measurementId: "G-QW9MQWEQ6G"
+  };
 
 // Inicializar Firebase
 firebase.initializeApp(firebaseConfig);
