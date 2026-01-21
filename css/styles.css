@@ -732,3 +732,86 @@ body::before {
     font-size: .78rem !important;
   }
 }
+
+/* ===========================
+   FOOTER (Rodapé)
+   Cole NO FINAL do css/styles.css
+   =========================== */
+
+/* garante rodapé “no fim” da página mesmo com pouco conteúdo */
+body{
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content{
+  flex: 1 0 auto;
+}
+
+.site-footer{
+  flex-shrink: 0;
+  margin-top: 1.25rem;
+  padding: 1rem 0;
+  background: rgba(255,255,255,0.65);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(10, 74, 140, 0.10);
+  color: var(--medium-gray);
+}
+
+.footer-content{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+  font-size: .9rem;
+  font-weight: 600;
+}
+
+.footer-left{
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.footer-sep{
+  opacity: .7;
+}
+
+.footer-right{
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.footer-link{
+  color: var(--primary-blue);
+  text-decoration: none;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.footer-link:hover{
+  text-decoration: underline;
+}
+
+.footer-linkedin i{
+  font-size: 1.05rem;
+}
+
+.footer-link-text{
+  font-weight: 700;
+  color: var(--primary-blue);
+  opacity: .92;
+}
+
+/* mobile */
+@media (max-width: 600px){
+  .footer-content{
+    justify-content: center;
+    text-align: center;
+  }
+}

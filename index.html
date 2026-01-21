@@ -7,8 +7,32 @@ FILE: index.html
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Visualização das Reinteradas - ENEL</title>
+
+    <!-- ✅ Open Graph / WhatsApp / LinkedIn -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Sistema S.V.R - ENEL" />
+    <meta property="og:description" content="Sistema de Visualização das Reinteradas - Painel de análise operacional." />
+    <meta property="og:url" content="https://eilandims-del.github.io/reinteradasenel/" />
+    <meta property="og:image" content="https://eilandims-del.github.io/reinteradasenel/assets/logo-enel-preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+
+    <!-- ✅ Twitter Card (também ajuda em vários apps) -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Sistema S.V.R - ENEL" />
+    <meta name="twitter:description" content="Sistema de Visualização das Reinteradas - Painel de análise operacional." />
+    <meta name="twitter:image" content="https://eilandims-del.github.io/reinteradasenel/assets/logo-enel-preview.png" />
+
+    <!-- ✅ Favicon / Ícone da aba (logo) -->
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-enel-preview.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-enel-preview.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/logo-enel-preview.png">
+
+    <!-- (Opcional) manter compatibilidade com seus antigos -->
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="alternate icon" href="favicon.ico">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -155,7 +179,7 @@ FILE: index.html
                         <i class="fas fa-plus"></i> Adicionar Info
                     </button>
 
-                    <!-- NOVO: Exportar Excel -->
+                    <!-- Exportar Excel -->
                     <button id="btnExportExcel" class="btn btn-sm btn-secondary" title="Exportar tabela para Excel">
                         <i class="fas fa-file-excel"></i> Exportar
                     </button>
@@ -200,6 +224,29 @@ FILE: index.html
         <span id="toastMessage"></span>
     </div>
 
+    <!-- ✅ NOVO: Footer -->
+    <footer class="site-footer">
+      <div class="container footer-content">
+        <div class="footer-left">
+          <span>© <span id="footerYear"></span> Sistema S.V.R</span>
+          <span class="footer-sep">•</span>
+          <span>
+            Criado por
+            <a class="footer-link" href="mailto:eilandims@gmail.com?subject=Contato%20-%20Sistema%20SVR">
+              Lucas Landim
+            </a>
+          </span>
+        </div>
+
+        <div class="footer-right">
+          <a class="footer-link footer-linkedin" href="https://www.linkedin.com/in/lucaslandims" target="_blank" rel="noopener noreferrer" title="LinkedIn">
+            <i class="fab fa-linkedin"></i>
+            <span class="footer-link-text">linkedin.com/in/lucaslandims</span>
+          </a>
+        </div>
+      </div>
+    </footer>
+
     <!-- Scripts -->
     <script type="module" src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -208,7 +255,7 @@ FILE: index.html
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 
-    <!-- NOVO: SheetJS para exportar Excel -->
+    <!-- SheetJS para exportar Excel -->
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <script type="module" src="js/firebase-config.js"></script>
@@ -219,5 +266,13 @@ FILE: index.html
     <script type="module" src="js/components/charts.js"></script>
     <script type="module" src="js/utils/helpers.js"></script>
     <script type="module" src="js/main.js"></script>
+
+    <!-- ✅ Pequeno script só para ano automático (não interfere em nada do sistema) -->
+    <script>
+      (function () {
+        var el = document.getElementById('footerYear');
+        if (el) el.textContent = new Date().getFullYear();
+      })();
+    </script>
 </body>
 </html>
