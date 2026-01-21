@@ -30,19 +30,27 @@ export function closeModal(modalId) {
  * Inicializar eventos de fechamento de modal
  */
 export function initModalEvents() {
-  // Fechar ao clicar fora
+  // Fechar ao clicar fora (BACKDROP) — EXCETO modalDetalhes
   document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal')) {
-      closeModal(e.target.id);
-    }
+    if (!e.target.classList.contains('modal')) return;
+
+    // modalDetalhes NÃO fecha clicando fora
+    if (e.target.id === 'modalDetalhes') return;
+
+    closeModal(e.target.id);
   });
 
-  // Fechar com ESC
+  // Fechar com ESC — EXCETO modalDetalhes
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const activeModal = document.querySelector('.modal.active');
-      if (activeModal) closeModal(activeModal.id);
-    }
+    if (e.key !== 'Escape') return;
+
+    const activeModal = document.querySelector('.modal.active');
+    if (!activeModal) return;
+
+    // modalDetalhes NÃO fecha no ESC
+    if (activeModal.id === 'modalDetalhes') return;
+
+    closeModal(activeModal.id);
   });
 
   // Fechar modal ao clicar no botão X (delegação)
@@ -51,11 +59,10 @@ export function initModalEvents() {
     if (!btn) return;
 
     const modal = btn.closest('.modal');
-    if (modal) {
-      closeModal(modal.id);
-    }
+    if (modal) closeModal(modal.id);
   });
 }
+
 
 /**
  * Preencher modal de detalhes (AGORA EM TABELA/HORIZONTAL)
@@ -73,9 +80,11 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
     { key: 'ELEMENTO', label: 'ELEMENTO' },
     { key: 'DATA', label: 'DATA' },
     { key: 'CAUSA', label: 'CAUSA' },
+    { key: 'CLI AFET', label: 'CLI AFET' },
     { key: 'ALIMENT.', label: 'ALIMENTADOR' },
     { key: 'CONJUNTO', label: 'CONJUNTO' }
   ];
+  
 
   // Normaliza colunas adicionais e remove duplicadas (por segurança)
   const extraCols = Array.from(new Set((selectedColumns || []).filter(Boolean)));

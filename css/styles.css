@@ -1135,3 +1135,30 @@ body::before {
     justify-content: center !important;
   }
 }
+/* =========================================
+   MODAL DETALHES - FIXAR COLUNA "CLI AFET"
+   (5ª coluna na ordem definida)
+   - fixa na DIREITA durante scroll horizontal
+========================================= */
+
+.detalhes-table{
+  position: relative;
+}
+
+/* Header da coluna CLI AFET (5ª) fixo à direita */
+.detalhes-table thead th:nth-child(5){
+  position: sticky;
+  right: 0;
+  z-index: 6; /* acima do resto do header */
+  background: var(--gradient-primary);
+  box-shadow: -10px 0 14px rgba(0,0,0,.08);
+}
+
+/* Células da coluna CLI AFET (5ª) fixas à direita */
+.detalhes-table tbody td:nth-child(5){
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  background: linear-gradient(135deg, var(--white) 0%, var(--lighter-gray) 100%);
+  box-shadow: -10px 0 14px rgba(0,0,0,.06);
+}

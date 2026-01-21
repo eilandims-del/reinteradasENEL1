@@ -9,29 +9,53 @@ import { DataService } from './firebase-service.js';
  */
 export function generateRankingElemento(data) {
     const elementos = {};
-    
+  
+    const getCliAfet = (item) => {
+      if (!item) return 0;
+  
+      // tenta várias chaves possíveis
+      const raw =
+        item['CLI AFET'] ??
+        item['CLI_AFET'] ??
+        item['CLI_AFET.'] ??
+        item['CLIAFET'] ??
+        item['CLI'] ??
+        item['CLI_AFETADO'] ??
+        item['CLI AFETADO'];
+  
+      const n = parseInt(String(raw ?? '').replace(/[^\d\-]/g, ''), 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+  
     data.forEach(item => {
-        const elemento = item.ELEMENTO || item['ELEMENTO'] || '';
-        if (elemento) {
-            if (!elementos[elemento]) {
-                elementos[elemento] = [];
-            }
-            elementos[elemento].push(item);
-        }
+      const elemento = item.ELEMENTO || item['ELEMENTO'] || '';
+      if (!elemento) return;
+  
+      if (!elementos[elemento]) elementos[elemento] = [];
+      elementos[elemento].push(item);
     });
-
-    // Filtrar apenas elementos com mais de uma ocorrência e ordenar
+  
     const ranking = Object.entries(elementos)
-        .filter(([_, ocorrencias]) => ocorrencias.length > 1)
-        .map(([elemento, ocorrencias]) => ({
-            elemento,
-            count: ocorrencias.length,
-            ocorrencias
-        }))
-        .sort((a, b) => b.count - a.count);
-
+      // só elementos com repetição (>=2)
+      .filter(([_, ocorrencias]) => ocorrencias.length > 1)
+      // regra: se começa com T, precisa ter algum CLI AFET >= 3
+      .filter(([elemento, ocorrencias]) => {
+        const el = String(elemento).trim().toUpperCase();
+        if (!el.startsWith('T')) return true;
+  
+        // entra se QUALQUER ocorrência tiver CLI AFET >= 3
+        return ocorrencias.some(o => getCliAfet(o) >= 3);
+      })
+      .map(([elemento, ocorrencias]) => ({
+        elemento,
+        count: ocorrencias.length,
+        ocorrencias
+      }))
+      .sort((a, b) => b.count - a.count);
+  
     return ranking;
-}
+  }
+  
 
 /**
  * Gerar ranking por CAUSA
