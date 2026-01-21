@@ -28,6 +28,12 @@ async function init() {
  * Inicializar event listeners
  */
 function initEventListeners() {
+  // Fechar modal detalhes (X)
+  document.getElementById('fecharModal')?.addEventListener('click', () => closeModal('modalDetalhes'));
+
+  // Fechar modal info (X)
+  document.getElementById('fecharModalInfo')?.addEventListener('click', () => closeModal('modalAdicionarInfo'));
+
   // Abrir/confirmar info adicional
   document.getElementById('btnAdicionarInfo')?.addEventListener('click', openModalAddInfo);
   document.getElementById('confirmarInfo')?.addEventListener('click', confirmAddInfo);
@@ -45,21 +51,24 @@ function initEventListeners() {
   });
 
   // Botões filtro ELEMENTO
+  const btnTodos = document.getElementById('btnFiltroTodos');
   const btnTrafo = document.getElementById('btnFiltroTrafo');
   const btnFusivel = document.getElementById('btnFiltroFusivel');
   const btnOutros = document.getElementById('btnFiltroOutros');
 
   const setActive = (activeBtn) => {
-    [btnTrafo, btnFusivel, btnOutros].forEach(b => b?.classList.remove('active'));
+    [btnTodos, btnTrafo, btnFusivel, btnOutros].forEach(b => b?.classList.remove('active'));
     activeBtn?.classList.add('active');
   };
 
+  btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); });
   btnTrafo?.addEventListener('click', () => { setElementoFilter('TRAFO'); setActive(btnTrafo); });
   btnFusivel?.addEventListener('click', () => { setElementoFilter('FUSIVEL'); setActive(btnFusivel); });
   btnOutros?.addEventListener('click', () => { setElementoFilter('OUTROS'); setActive(btnOutros); });
 
   // estado inicial visual
-  setActive(btnTrafo);
+  setElementoFilter('TODOS');
+  setActive(btnTodos);
 
   // busca com debounce
   const searchElemento = document.getElementById('searchElemento');

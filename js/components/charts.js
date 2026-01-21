@@ -76,7 +76,87 @@ function openDetails(tipo, nome, ocorrencias) {
   openModal('modalDetalhes');
 }
 
-function renderScrollList(containerId, ranking, tipo) {
+/** Util: escolher texto branco/preto conforme cor de fundo */
+function getReadableTextColor(hex) {
+  try {
+    const h = String(hex || '').replace('#', '').trim();
+    if (h.length !== 6) return '#FFFFFF';
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    // luminância perceptual
+    const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    return lum > 0.62 ? '#1A1F2E' : '#FFFFFF';
+  } catch {
+    return '#FFFFFF';
+  }
+}
+
+/**
+ * Plugin local: escreve % nas fatias do gráfico de pizza
+ * (sem depender de chartjs-plugin-datalabels)
+ */
+const piePercentLabelsPlugin = {
+  id: 'piePercentLabelsPlugin',
+  afterDatasetsDraw(chart, args, pluginOptions) {
+    if (!chart || chart.config?.type !== 'pie') return;
+
+    const datasetIndex = 0;
+    const meta = chart.getDatasetMeta(datasetIndex);
+    if (!meta || !meta.data || !meta.data.length) return;
+
+    const dataset = chart.data?.datasets?.[datasetIndex];
+    const data = Array.isArray(dataset?.data) ? dataset.data : [];
+    const bg = Array.isArray(dataset?.backgroundColor) ? dataset.backgroundColor : [];
+
+    const total = data.reduce((acc, v) => acc + (Number(v) || 0), 0);
+    if (!total) return;
+
+    const ctx = chart.ctx;
+    ctx.save();
+
+    // Opções
+    const minPctToShow = pluginOptions?.minPctToShow ?? 4; // não polui fatia pequena
+    const fontSize = pluginOptions?.fontSize ?? 12;
+    const fontWeight = pluginOptions?.fontWeight ?? 800;
+    const fontFamily = pluginOptions?.fontFamily ?? "'Inter', 'Segoe UI', sans-serif";
+
+    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    meta.data.forEach((arcEl, i) => {
+      const value = Number(data[i]) || 0;
+      if (!value) return;
+
+      const pct = (value / total) * 100;
+      if (pct < minPctToShow) return;
+
+      // Centro da fatia
+      const center = arcEl.getCenterPoint ? arcEl.getCenterPoint() : null;
+      if (!center) return;
+
+      const label = `${pct.toFixed(0)}%`;
+      const bgColor = bg[i] || '#0A4A8C';
+
+      // Borda/sombra leve para legibilidade
+      ctx.fillStyle = getReadableTextColor(bgColor);
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 1;
+
+      ctx.fillText(label, center.x, center.y);
+    });
+
+    ctx.restore();
+  }
+};
+
+/**
+ * Lista com scroll (com indicador de cor opcional por item)
+ */
+function renderScrollList(containerId, ranking, tipo, colorByName = null) {
   const list = document.getElementById(containerId);
   if (!list) return;
 
@@ -91,8 +171,14 @@ function renderScrollList(containerId, ranking, tipo) {
     div.className = 'chart-list-item';
     div.onclick = () => openDetails(tipo, item.name, item.ocorrencias);
 
+    const dotColor = typeof colorByName === 'function' ? (colorByName(item.name) || null) : null;
+    const dotStyle = dotColor ? `style="background:${dotColor}"` : `style="background: rgba(90,108,125,.35)"`;
+
     div.innerHTML = `
-      <span class="chart-list-name">${item.name}</span>
+      <div class="chart-list-left">
+        <span class="chart-color-dot" ${dotStyle}></span>
+        <span class="chart-list-name">${item.name}</span>
+      </div>
       <span class="chart-list-count">(${item.count})</span>
     `;
 
@@ -123,13 +209,20 @@ export function renderChartCausa(data) {
     '#F97316', '#22C55E', '#3B82F6', '#EAB308'
   ];
 
+  const topColors = colors.slice(0, labels.length);
+
+  // Mapa nome -> cor (para usar na lista)
+  const colorMap = new Map();
+  labels.forEach((name, idx) => colorMap.set(name, topColors[idx]));
+  const getColorForCause = (name) => colorMap.get(name) || null;
+
   chartCausa = new Chart(canvas, {
     type: 'pie',
     data: {
       labels,
       datasets: [{
         data: values,
-        backgroundColor: colors.slice(0, labels.length),
+        backgroundColor: topColors,
         borderColor: '#FFFFFF',
         borderWidth: 3,
         hoverBorderWidth: 4,
@@ -163,6 +256,13 @@ export function renderChartCausa(data) {
               return `${label}: ${value} (${pct}%)`;
             }
           }
+        },
+        // configurações do plugin local de % (não é tooltip)
+        piePercentLabelsPlugin: {
+          minPctToShow: 4,   // não polui fatias muito pequenas
+          fontSize: 12,
+          fontWeight: 900,
+          fontFamily: "'Inter', 'Segoe UI', sans-serif"
         }
       },
       onClick: (evt, elements) => {
@@ -173,11 +273,12 @@ export function renderChartCausa(data) {
         if (found) openDetails('CAUSA', found.name, found.ocorrencias);
       },
       animation: { duration: 900, easing: 'easeOutQuart' }
-    }
+    },
+    plugins: [piePercentLabelsPlugin] // ativa o plugin que desenha % nas fatias
   });
 
-  // Lista clicável com scrollbar (todas as causas, já filtradas)
-  renderScrollList('chartCausaList', rankingAll, 'CAUSA');
+  // Lista clicável com scrollbar (todas as causas), com indicador de cor (Top 10)
+  renderScrollList('chartCausaList', rankingAll, 'CAUSA', getColorForCause);
 }
 
 /**
@@ -272,7 +373,8 @@ export function renderChartAlimentador(data) {
     }
   });
 
-  renderScrollList('chartAlimentadorList', rankingAll, 'ALIMENTADOR');
+  // Para alimentador: dot cinza (não tem pizza com cores individuais)
+  renderScrollList('chartAlimentadorList', rankingAll, 'ALIMENTADOR', null);
 }
 
 /**

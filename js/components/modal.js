@@ -44,6 +44,17 @@ export function initModalEvents() {
       if (activeModal) closeModal(activeModal.id);
     }
   });
+      // Fechar modal ao clicar no botão X
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.modal-close');
+        if (!btn) return;
+
+        const modal = btn.closest('.modal');
+        if (modal) {
+            closeModal(modal.id);
+        }
+    });
+
 }
 
 /**

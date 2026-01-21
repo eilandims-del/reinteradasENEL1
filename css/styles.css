@@ -619,4 +619,29 @@ body::before {
       justify-content: flex-start;
     }
   }
-    
+    /* ===========================
+   Chart list color indicator
+   =========================== */
+
+.chart-list-left{
+    display: flex;
+    align-items: center;
+    gap: .65rem;
+    flex: 1;
+    min-width: 0; /* permite ellipsis do nome */
+  }
+  
+  .chart-color-dot{
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    box-shadow: 0 2px 6px rgba(10, 74, 140, 0.18);
+    flex: 0 0 12px;
+  }
+  
+  .chart-list-name{
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  

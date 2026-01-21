@@ -27,13 +27,13 @@ FILE: index.html
                 alt="ENEL Brasil"
                 class="header-logo"
               />
-          
+
               <div class="header-text">
                 <h1 class="header-title">Sistema S.V.R</h1>
                 <p class="header-subtitle">Sistema de Visualização das Reinteradas</p>
               </div>
             </div>
-          
+
             <!-- DIREITA: BOTÕES -->
             <div class="header-actions">
               <a class="btn btn-secondary btn-sm" href="index.html">
@@ -44,7 +44,6 @@ FILE: index.html
               </a>
             </div>
           </div>
-          
       </header>
 
     <!-- Main Content -->
@@ -84,6 +83,7 @@ FILE: index.html
                     <div class="ranking-controls">
                       <!-- filtros -->
                       <div class="ranking-filters">
+                        <button id="btnFiltroTodos" class="btn btn-secondary btn-sm">TODOS</button>
                         <button id="btnFiltroTrafo" class="btn btn-secondary btn-sm">TRAFO</button>
                         <button id="btnFiltroFusivel" class="btn btn-secondary btn-sm">FUSÍVEL</button>
                         <button id="btnFiltroOutros" class="btn btn-secondary btn-sm">OUTROS</button>
@@ -95,7 +95,12 @@ FILE: index.html
                         <button id="btnClearSearchElemento" class="btn btn-secondary btn-sm" title="Limpar">×</button>
                       </div>
 
-                      <!-- copiar (mantém só no ELEMENTO) -->
+                      <!-- total (quantidade de itens no ranking) -->
+                      <div id="rankingElementoTotal" class="btn btn-secondary btn-sm" style="cursor: default;">
+                        Reinteradas: 0
+                      </div>
+
+                      <!-- copiar -->
                       <button id="copiarRankingElemento" class="btn btn-whatsapp btn-sm" title="Copiar ranking ELEMENTO">
                         <i class="fab fa-whatsapp"></i> COPIAR
                       </button>
@@ -111,7 +116,6 @@ FILE: index.html
                     <h2 class="section-title">
                       <i class="fas fa-trophy"></i> Ranking por CAUSA
                     </h2>
-                    <!-- REMOVIDO botão COPIAR -->
                   </div>
 
                   <div class="chart-block">
@@ -128,7 +132,6 @@ FILE: index.html
                     <h2 class="section-title">
                       <i class="fas fa-trophy"></i> Ranking por ALIMENTADOR
                     </h2>
-                    <!-- REMOVIDO botão COPIAR -->
                   </div>
 
                   <div class="chart-block">
@@ -198,6 +201,7 @@ FILE: index.html
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/services/firebase-service.js"></script>
     <script type="module" src="js/services/data-service.js"></script>
