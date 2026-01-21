@@ -644,4 +644,38 @@ body::before {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  /* ===========================
+   Ranking (Elemento) - filtros em 1 linha
+   =========================== */
+
+.ranking-filters{
+    display: flex;
+    flex-wrap: nowrap;          /* força 1 linha */
+    gap: .35rem;                /* reduz espaço entre botões */
+    overflow-x: auto;           /* se faltar 1px, permite rolar */
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .ranking-filters .btn.btn-sm{
+    padding: .35rem .55rem;     /* diminui botão */
+    font-size: .78rem;          /* diminui texto */
+    line-height: 1;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+  
+  /* opcional: diminui o ícone, se houver */
+  .ranking-filters .btn.btn-sm i{
+    font-size: .85em;
+  }
+  
+  /* em telas bem pequenas, reduz mais ainda */
+  @media (max-width: 420px){
+    .ranking-filters .btn.btn-sm{
+      padding: .30rem .45rem;
+      font-size: .72rem;
+    }
+  }
+  
   
