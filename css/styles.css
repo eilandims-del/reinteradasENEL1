@@ -1051,3 +1051,87 @@ body::before {
     border-radius: 14px !important;
   }
 }
+/* =====================================================
+   AJUSTE FINAL HEADER
+   - Menos altura (faixa azul mais fina)
+   - Texto mais profissional
+   - Logo continua dominante
+===================================================== */
+
+/* Header mais fino */
+.header{
+  padding: 0.65rem 0 !important; /* antes estava muito alto */
+}
+
+/* Organização geral */
+.header-content{
+  align-items: center !important;
+}
+
+/* LOGO – continua maior que o texto, sem inflar o header */
+.header .header-logo{
+  height: clamp(70px, 5vw, 95px) !important;
+  max-width: 320px !important;
+  object-fit: contain !important;
+}
+
+/* TEXTO – tamanho profissional */
+.header .header-title{
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem) !important;
+  line-height: 1.1 !important;
+  font-weight: 800 !important;
+  margin: 0 !important;
+}
+
+.header .header-subtitle{
+  font-size: clamp(0.78rem, 1.1vw, 0.9rem) !important;
+  line-height: 1.15 !important;
+  opacity: 0.9 !important;
+  margin: 0 !important;
+}
+
+/* BOTÕES – não crescem junto com o header */
+.header-actions .btn{
+  padding: 0.45rem 0.9rem !important;
+  font-size: 0.85rem !important;
+}
+
+/* =========================
+   MOBILE (mais compacto)
+========================= */
+@media (max-width: 600px){
+  .header{
+    padding: 0.6rem 0 !important;
+  }
+
+  .header-left{
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.3rem !important;
+  }
+
+  .header .header-logo{
+    height: 64px !important;
+    max-width: 200px !important;
+  }
+
+  .header .header-title{
+    font-size: 1.05rem !important;
+  }
+
+  .header .header-subtitle{
+    font-size: 0.8rem !important;
+  }
+
+  .header-actions{
+    width: 100% !important;
+    margin-top: 0.4rem !important;
+    display: flex !important;
+    gap: 0.5rem !important;
+  }
+
+  .header-actions .btn{
+    flex: 1 !important;
+    justify-content: center !important;
+  }
+}
