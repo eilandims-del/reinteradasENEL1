@@ -286,29 +286,33 @@ export function generateRankingText() {
   };
 
   if (currentElementoFilter === 'TODOS') {
-    // Ordem fixa: TRAFO -> FUSÍVEL -> RELIGADOR
+    renderSecao('TRAFO', trafos);
+    renderSecao('FUSÍVEL', fus);
+    renderSecao('RELIGADOR', rel);
+
+    if (!trafos.length && !fus.length && !rel.length) {
+      linhas.push('OBS: Não reinterou nenhum FUSÍVEL, TRAFO, RELIGADOR');
+      linhas.push('');
+    }
+  } else if (currentElementoFilter === 'TRAFO') {
     renderSecao('TRAFO', trafos);
     if (!trafos.length) {
-      linhas.push('⚡ Não foi reinterado nenhum transformador');
-      linhas.push('');
+      linhas.push('OBS: Não reinterou nenhum TRAFO');
       linhas.push('');
     }
-  
+  } else if (currentElementoFilter === 'FUSIVEL') {
     renderSecao('FUSÍVEL', fus);
     if (!fus.length) {
-      linhas.push('🔌 Não foi reinterado nenhum fusível');
-      linhas.push('');
+      linhas.push('OBS: Não reinterou nenhum FUSÍVEL');
       linhas.push('');
     }
-  
+  } else if (currentElementoFilter === 'RELIGADOR') {
     renderSecao('RELIGADOR', rel);
     if (!rel.length) {
-      linhas.push('🔄 Não foi reinterado nenhum religador');
-      linhas.push('');
+      linhas.push('OBS: Não reinterou nenhum RELIGADOR');
       linhas.push('');
     }
   }
-  
 
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   linhas.push('🔗 *Visualizar mais detalhes:*');
