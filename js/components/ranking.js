@@ -2,8 +2,9 @@
  * Componente Ranking - Exibição e gerenciamento de rankings
  */
 
-import { generateRankingElemento, getOcorrenciasByElemento } from '../services/data-service.js';
+import { generateRankingElemento } from '../services/data-service.js';
 import { openModal, fillDetailsModal } from './modal.js';
+import { formatDate } from '../utils/helpers.js';
 
 let currentRankingData = [];
 let allData = [];
@@ -69,11 +70,29 @@ function getFilteredRanking(ranking) {
   return result;
 }
 
+/**
+ * Total do ranking (clicável para exportar Excel)
+ */
 function updateRankingTotal(ranking) {
   const el = document.getElementById('rankingElementoTotal');
   if (!el) return;
+
   const total = Array.isArray(ranking) ? ranking.length : 0;
   el.textContent = `Reinteradas: ${total}`;
+
+  // Visual/UX
+  el.style.cursor = 'pointer';
+  el.title = 'Clique para baixar Excel (ELEMENTO / DATA / ALIMENTADOR / INCIDÊNCIA)';
+
+  // Evita múltiplos listeners
+  if (el.__exportRankingClick) {
+    el.removeEventListener('click', el.__exportRankingClick);
+    el.__exportRankingClick = null;
+  }
+
+  const onClick = () => exportRankingElementoToExcel(ranking);
+  el.__exportRankingClick = onClick;
+  el.addEventListener('click', onClick);
 }
 
 function renderRankingList(ranking) {
@@ -152,7 +171,6 @@ function renderRankingList(ranking) {
 
   // Handler de scroll com gatilho no final
   const onScroll = async () => {
-    // se já carregou tudo, não faz nada
     if (currentEnd >= ranking.length) return;
 
     const nearBottom =
@@ -172,15 +190,12 @@ function renderRankingList(ranking) {
   renderBatch(0, firstEnd).then(async () => {
     currentEnd = firstEnd;
 
-    // 2) Caso a lista inicial não ocupe todo o container (sem scroll),
-    //    completa automaticamente até gerar scroll ou acabar os itens.
-    //    (Evita "parece travado" em telas grandes)
+    // 2) Se ainda não gerou scroll (tela grande), completa automaticamente
     while (currentEnd < ranking.length && container.scrollHeight <= container.clientHeight) {
       await loadMoreIfNeeded();
     }
   });
 }
-
 
 /**
  * Renderizar ranking por ELEMENTO
@@ -514,4 +529,112 @@ function renderRankingGeneric(containerId, ranking, onClick) {
 
     container.appendChild(div);
   });
+}
+
+/* ============================
+   EXPORT EXCEL - RANKING ELEMENTO
+   ============================ */
+
+function getValueSmartRow(obj, key) {
+  if (!obj) return '';
+
+  if (obj[key] != null) return obj[key];
+
+  const keyNoDot = String(key).replace(/\./g, '');
+  if (obj[keyNoDot] != null) return obj[keyNoDot];
+
+  const upper = String(key).toUpperCase();
+  const lower = String(key).toLowerCase();
+  if (obj[upper] != null) return obj[upper];
+  if (obj[lower] != null) return obj[lower];
+
+  const normalizeKey2 = (k) =>
+    String(k || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\./g, '')
+      .replace(/\s+/g, ' ');
+
+  const target = normalizeKey2(key);
+  const foundKey = Object.keys(obj).find(k => normalizeKey2(k) === target);
+  if (foundKey) return obj[foundKey];
+
+  return '';
+}
+
+function exportRankingElementoToExcel(rankingView) {
+  if (!Array.isArray(rankingView) || rankingView.length === 0) {
+    alert('Sem dados no ranking para exportar.');
+    return;
+  }
+
+  if (!window.XLSX) {
+    alert('Biblioteca XLSX não carregada. Verifique o SheetJS no index.html.');
+    return;
+  }
+
+  const rows = [];
+
+  for (const item of rankingView) {
+    const elemento = item?.elemento ?? '';
+    const ocorrs = Array.isArray(item?.ocorrencias) ? item.ocorrencias : [];
+
+    for (const o of ocorrs) {
+      const rawData = getValueSmartRow(o, 'DATA');
+      const dataFmt = rawData ? formatDate(rawData) : '';
+
+      const aliment = getValueSmartRow(o, 'ALIMENT.');
+      const incid = getValueSmartRow(o, 'INCIDENCIA');
+
+      rows.push({
+        ELEMENTO: String(elemento || '').trim(),
+        DATA: String(dataFmt || '').trim(),
+        ALIMENTADOR: String(aliment || '').trim(),
+        'INCIDÊNCIA': String(incid || '').trim(),
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    alert('Sem ocorrências para exportar.');
+    return;
+  }
+
+  // Ordena por ELEMENTO e DATA (opcional)
+  rows.sort((a, b) => {
+    const ea = a.ELEMENTO.localeCompare(b.ELEMENTO);
+    if (ea !== 0) return ea;
+    return a.DATA.localeCompare(b.DATA);
+  });
+
+  const ws = window.XLSX.utils.json_to_sheet(rows, {
+    header: ['ELEMENTO', 'DATA', 'ALIMENTADOR', 'INCIDÊNCIA'],
+  });
+
+  ws['!cols'] = [
+    { wch: 22 }, // ELEMENTO
+    { wch: 12 }, // DATA
+    { wch: 18 }, // ALIMENTADOR
+    { wch: 14 }, // INCIDÊNCIA
+  ];
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Ranking_Elemento');
+
+  const di = document.getElementById('dataInicial')?.value || '';
+  const df = document.getElementById('dataFinal')?.value || '';
+
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+
+  const periodo =
+    (di && df) ? `${di}_a_${df}` :
+    (di && !df) ? `de_${di}` :
+    (!di && df) ? `ate_${df}` :
+    'sem_filtro_data';
+
+  const fileName = `Ranking_Elemento_${periodo}_${stamp}.xlsx`;
+
+  window.XLSX.writeFile(wb, fileName);
 }
