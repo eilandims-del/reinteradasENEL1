@@ -311,3 +311,117 @@ export function exportDetailsToExcel() {
   // Download
   window.XLSX.writeFile(wb, fileName);
 }
+/**
+ * Monta (ou atualiza) o modal de relatório por Alimentador
+ */
+export function buildAlimentadorReportModal(alimentadores = []) {
+  // cria o modal se não existir
+  let modal = document.getElementById('modalRelatorioAlimentador');
+
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalRelatorioAlimentador';
+    modal.className = 'modal';
+
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width: 720px;">
+        <div class="modal-header">
+          <h2>Relatório por Alimentador</h2>
+          <button class="modal-close" aria-label="Fechar">&times;</button>
+        </div>
+
+        <div class="modal-body">
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <input id="alimentadorReportSearch" type="text" placeholder="Buscar alimentador..." style="flex:1; padding:10px;" />
+            <button id="alimentadorReportSelectAll" class="btn btn-secondary btn-sm" type="button">Marcar todos</button>
+            <button id="alimentadorReportClearAll" class="btn btn-secondary btn-sm" type="button">Limpar</button>
+          </div>
+
+          <div id="alimentadorReportList" style="max-height: 320px; overflow:auto; border:1px solid var(--border-color); border-radius:8px; padding:10px;"></div>
+        </div>
+
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+          <button id="alimentadorReportExport" class="btn btn-primary" type="button">EXPORTAR</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  // ordena e remove vazios
+  const list = [...new Set(alimentadores.map(a => String(a || '').trim()).filter(Boolean))].sort();
+
+  const listEl = modal.querySelector('#alimentadorReportList');
+  const searchEl = modal.querySelector('#alimentadorReportSearch');
+  const btnAll = modal.querySelector('#alimentadorReportSelectAll');
+  const btnClear = modal.querySelector('#alimentadorReportClearAll');
+  const btnExport = modal.querySelector('#alimentadorReportExport');
+
+  const renderList = (filterText = '') => {
+    const ft = String(filterText || '').trim().toUpperCase();
+    listEl.innerHTML = '';
+
+    const frag = document.createDocumentFragment();
+    list
+      .filter(a => !ft || a.toUpperCase().includes(ft))
+      .forEach((a) => {
+        const id = `chk_${a.replace(/\W+/g, '_')}`;
+
+        const row = document.createElement('label');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+        row.style.padding = '6px 4px';
+        row.style.cursor = 'pointer';
+
+        row.innerHTML = `
+          <input type="checkbox" class="alimentadorReportChk" value="${escapeHtml(a)}" />
+          <span>${escapeHtml(a)}</span>
+        `;
+
+        frag.appendChild(row);
+      });
+
+    listEl.appendChild(frag);
+  };
+
+  renderList('');
+
+  searchEl.oninput = (e) => renderList(e.target.value);
+
+  btnAll.onclick = () => {
+    modal.querySelectorAll('.alimentadorReportChk').forEach(chk => chk.checked = true);
+  };
+
+  btnClear.onclick = () => {
+    modal.querySelectorAll('.alimentadorReportChk').forEach(chk => chk.checked = false);
+  };
+
+  btnExport.onclick = async () => {
+    const selected = Array.from(modal.querySelectorAll('.alimentadorReportChk'))
+      .filter(chk => chk.checked)
+      .map(chk => chk.value);
+
+    if (!selected.length) {
+      alert('Selecione pelo menos 1 alimentador.');
+      return;
+    }
+
+    // dispara a exportação (implementada no ranking.js para usar os dados atuais)
+    // este evento customizado é simples e evita import circular
+    window.dispatchEvent(new CustomEvent('export-alimentador-report', { detail: { selected } }));
+  };
+}
+
+/**
+ * Escape básico para HTML
+ */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}

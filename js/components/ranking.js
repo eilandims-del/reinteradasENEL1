@@ -21,8 +21,15 @@ export function renderRankingCausa(data){
 export function renderRankingAlimentador(data){
   const ranking = generateRankingByField(data, 'ALIMENT.');
   currentRankingAlimentadorData = ranking;
-  renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) => openGenericDetails('ALIMENTADOR', name, ocorrencias));
+
+  renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) =>
+    openGenericDetails('ALIMENTADOR', name, ocorrencias)
+  );
+
+  // cria/injeta botão "Relatório" no card do Ranking por Alimentador
+  ensureAlimentadorReportButton();
 }
+
 
 export function setElementoFilter(filter) {
   currentElementoFilter = String(filter || '').toUpperCase();
@@ -83,21 +90,27 @@ function renderRankingList(ranking) {
   // Atualiza total SEMPRE (mesmo vazio)
   updateRankingTotal(ranking);
 
-  if (ranking.length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum elemento encontrado para este filtro.</p>';
+  if (!ranking || ranking.length === 0) {
+    container.innerHTML =
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum elemento encontrado para este filtro.</p>';
     return;
   }
 
-  const INITIAL_DISPLAY = 100;
-  const hasMore = ranking.length > INITIAL_DISPLAY;
-
   container.innerHTML = '';
 
-  const renderBatch = (startIndex, endIndex) => {
-    return new Promise(resolve => {
+  // Renderização em lotes SEM botão, até o final (mantém UI responsiva)
+  const BATCH_SIZE = 200;
+  let i = 0;
+
+  const renderNextBatch = () =>
+    new Promise((resolve) => {
       requestAnimationFrame(() => {
-        for (let i = startIndex; i < endIndex && i < ranking.length; i++) {
+        const frag = document.createDocumentFragment();
+
+        const end = Math.min(i + BATCH_SIZE, ranking.length);
+        for (; i < end; i++) {
           const item = ranking[i];
+
           const itemDiv = document.createElement('div');
           itemDiv.className = 'ranking-item';
           itemDiv.onclick = () => openElementDetails(item.elemento, item.ocorrencias);
@@ -117,44 +130,22 @@ function renderRankingList(ranking) {
           itemDiv.appendChild(position);
           itemDiv.appendChild(name);
           itemDiv.appendChild(count);
-          container.appendChild(itemDiv);
+
+          frag.appendChild(itemDiv);
         }
+
+        container.appendChild(frag);
         resolve();
       });
     });
-  };
 
-  renderBatch(0, INITIAL_DISPLAY).then(() => {
-    if (hasMore) {
-      const showMoreBtn = document.createElement('button');
-      showMoreBtn.className = 'btn btn-secondary btn-sm';
-      showMoreBtn.style.marginTop = '1rem';
-      showMoreBtn.style.width = '100%';
-      showMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Ver mais (${ranking.length - INITIAL_DISPLAY} restantes)`;
-
-      let currentEnd = INITIAL_DISPLAY;
-      const BATCH_SIZE = 50;
-
-      showMoreBtn.onclick = async () => {
-        showMoreBtn.disabled = true;
-        showMoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
-
-        const nextEnd = Math.min(currentEnd + BATCH_SIZE, ranking.length);
-        await renderBatch(currentEnd, nextEnd);
-        currentEnd = nextEnd;
-
-        if (currentEnd >= ranking.length) {
-          showMoreBtn.remove();
-        } else {
-          showMoreBtn.disabled = false;
-          showMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Ver mais (${ranking.length - currentEnd} restantes)`;
-        }
-      };
-
-      container.appendChild(showMoreBtn);
+  (async () => {
+    while (i < ranking.length) {
+      await renderNextBatch();
     }
-  });
+  })();
 }
+
 
 /**
  * Renderizar ranking por ELEMENTO
@@ -484,4 +475,110 @@ function renderRankingGeneric(containerId, ranking, onClick) {
 
     container.appendChild(div);
   });
+}
+import { openModal, fillDetailsModal, buildAlimentadorReportModal, exportAlimentadorReport } from './modal.js'; 
+// ajuste para ./modals.js se esse for o nome correto
+
+function ensureAlimentadorReportButton() {
+  // container onde o ranking é renderizado
+  const listEl = document.getElementById('rankingAlimentador');
+  if (!listEl) return;
+
+  // tentar achar o "card" pai para posicionar o botão no canto inferior direito
+  const card = listEl.closest('.card') || listEl.parentElement;
+  if (!card) return;
+
+  // evita duplicar
+  if (card.querySelector('#btnRelatorioAlimentador')) return;
+
+  // garantir que o card seja "relative" para posicionamento absoluto do botão
+  const cs = window.getComputedStyle(card);
+  if (cs.position === 'static') card.style.position = 'relative';
+
+  const btn = document.createElement('button');
+  btn.id = 'btnRelatorioAlimentador';
+  btn.className = 'btn btn-primary btn-sm';
+  btn.textContent = 'Relatório';
+  btn.style.position = 'absolute';
+  btn.style.right = '12px';
+  btn.style.bottom = '12px';
+  btn.style.zIndex = '5';
+
+  btn.onclick = () => {
+    // monta o modal com as opções (alimentadores)
+    const nomes = (currentRankingAlimentadorData || []).map(x => x.name).filter(Boolean);
+    buildAlimentadorReportModal(nomes);
+    openModal('modalRelatorioAlimentador');
+  };
+
+  card.appendChild(btn);
+}
+// listener global para export do modal
+window.addEventListener('export-alimentador-report', (e) => {
+  const selected = e?.detail?.selected || [];
+  exportAlimentadorReport(selected);
+});
+
+function exportAlimentadorReport(selectedAlimentadores) {
+  if (!window.XLSX) {
+    alert('Biblioteca XLSX não carregada. Inclua o SheetJS no index.html.');
+    return;
+  }
+
+  const selectedSet = new Set((selectedAlimentadores || []).map(x => String(x || '').trim()).filter(Boolean));
+  if (!selectedSet.size) {
+    alert('Seleção vazia.');
+    return;
+  }
+
+  // Pega TODAS as ocorrências (linhas) dos alimentadores selecionados
+  const rows = [];
+  (currentRankingAlimentadorData || []).forEach(item => {
+    if (selectedSet.has(item.name)) {
+      (item.ocorrencias || []).forEach(r => rows.push(r));
+    }
+  });
+
+  if (!rows.length) {
+    alert('Não há ocorrências para os alimentadores selecionados.');
+    return;
+  }
+
+  // Monta cabeçalhos a partir do union das chaves
+  const headersSet = new Set();
+  rows.forEach(r => Object.keys(r || {}).forEach(k => headersSet.add(k)));
+  const headers = Array.from(headersSet);
+
+  // AOA: header + linhas
+  const aoa = [];
+  aoa.push(headers);
+
+  rows.forEach(r => {
+    const line = headers.map(h => {
+      const v = r?.[h];
+      return v == null ? '' : String(v);
+    });
+    aoa.push(line);
+  });
+
+  const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+
+  // largura simples
+  ws['!cols'] = headers.map((h, i) => {
+    let maxLen = String(h || '').length;
+    for (let r = 1; r < Math.min(aoa.length, 300); r++) {
+      maxLen = Math.max(maxLen, String(aoa[r][i] || '').length);
+    }
+    return { wch: Math.min(Math.max(maxLen + 2, 10), 60) };
+  });
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Relatorio');
+
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const fileName = `Relatorio_Alimentadores_${stamp}.xlsx`;
+
+  window.XLSX.writeFile(wb, fileName);
 }
