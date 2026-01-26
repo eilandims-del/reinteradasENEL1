@@ -297,7 +297,7 @@ export function generateRankingText() {
   const getTipoEmoji = (titulo) => {
     const t = String(titulo || '').toUpperCase();
     if (t.includes('TRAFO')) return '🔌';
-    if (t.includes('FUS')) return '🧯';
+    if (t.includes('FUS')) return '💡';
     if (t.includes('RELIG')) return '⚡';
     return '•';
   };
