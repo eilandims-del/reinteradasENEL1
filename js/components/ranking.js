@@ -78,7 +78,7 @@ function updateRankingTotal(ranking) {
   if (!el) return;
 
   const total = Array.isArray(ranking) ? ranking.length : 0;
-  el.textContent = `Reinteradas: ${total}`;
+  el.textContent = `Reiteradas: ${total}`;
 
   // Visual/UX
   el.style.cursor = 'pointer';
@@ -262,7 +262,7 @@ export function generateRankingText() {
   if (!view.length) {
     return [
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      '📋 *RELATÓRIO DE REINTERADAS*',
+      '📋 *RELATÓRIO DE REITERADAS*',
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       `Tipo de elemento: *${getFiltroLabel(currentElementoFilter)}*`,
       `📅 Período: ${getPeriodoLabel()}`,
@@ -281,7 +281,7 @@ export function generateRankingText() {
 
   const linhas = [];
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  linhas.push('📋 *RELATÓRIO DE REINTERADAS*');
+  linhas.push('📋 *RELATÓRIO DE REITERADAS*');
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   linhas.push(`Tipo de elemento: *${getFiltroLabel(currentElementoFilter)}*`);
   linhas.push(`📅 Período: ${getPeriodoLabel()}`);
