@@ -246,16 +246,16 @@ function openElementDetails(elemento, ocorrencias) {
 }
 
 /**
- * Gerar texto do ranking para copiar (WhatsApp) - modelo solicitado:
+ * Gerar texto do ranking para copiar (WhatsApp) - mais friendly
  * - Mostra Alimentador (mais frequente)
  * - Mostra TODAS as causas (únicas, ordenadas por frequência)
  * - Separa por tipo (TRAFO / FUSÍVEL / RELIGADOR) quando filtro = TODOS
- * - OBS aparece somente se não existir ranking do(s) tipo(s)
+ * - Quando TODOS: se uma seção estiver vazia, adiciona OBS individual
  */
 export function generateRankingText() {
   console.log('[COPIAR] generateRankingText ✅', { currentElementoFilter, elementoSearchTerm });
 
-  if (!currentRankingData.length) return 'Nenhum ranking disponível.';
+  if (!currentRankingData.length) return '⚠️ Nenhum ranking disponível no momento.';
 
   const view = getFilteredRanking(currentRankingData);
 
@@ -264,15 +264,16 @@ export function generateRankingText() {
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       '📋 *RELATÓRIO DE REITERADAS*',
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
-      `Tipo de elemento: *${getFiltroLabel(currentElementoFilter)}*`,
+      `🧩 Tipo: *${getFiltroLabel(currentElementoFilter)}*`,
       `📅 Período: ${getPeriodoLabel()}`,
+      elementoSearchTerm ? `🔎 Busca: *${elementoSearchTerm}*` : '',
       '',
-      'Nenhum elemento encontrado para o filtro atual.',
+      '😕 Nenhum elemento encontrado para o filtro atual.',
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
-      '🔗 *Visualizar mais detalhes:*',
+      '🔗 *Ver mais detalhes:*',
       'https://eilandims-del.github.io/reinteradasenel'
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   const trafos = view.filter(x => getElementoTipo(x.elemento) === 'TRAFO');
@@ -283,19 +284,30 @@ export function generateRankingText() {
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   linhas.push('📋 *RELATÓRIO DE REITERADAS*');
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  linhas.push(`Tipo de elemento: *${getFiltroLabel(currentElementoFilter)}*`);
+  linhas.push(`🧩 Tipo: *${getFiltroLabel(currentElementoFilter)}*`);
   linhas.push(`📅 Período: ${getPeriodoLabel()}`);
   if (elementoSearchTerm) linhas.push(`🔎 Busca: *${elementoSearchTerm}*`);
   linhas.push('');
+  linhas.push('📌 *Resumo por elemento*');
   linhas.push('');
 
   const MAX_ITENS_POR_SECAO = 30;
   let globalIndex = 1;
 
+  const getTipoEmoji = (titulo) => {
+    const t = String(titulo || '').toUpperCase();
+    if (t.includes('TRAFO')) return '🔌';
+    if (t.includes('FUS')) return '🧯';
+    if (t.includes('RELIG')) return '⚡';
+    return '•';
+  };
+
   const renderSecao = (titulo, arr) => {
     if (!arr.length) return;
 
-    linhas.push(`*${titulo}*`);
+    const icon = getTipoEmoji(titulo);
+
+    linhas.push(`${icon} *${titulo}*`);
     linhas.push('');
 
     const sliced = arr.slice(0, MAX_ITENS_POR_SECAO);
@@ -311,19 +323,20 @@ export function generateRankingText() {
       // Todas as causas (únicas, por frequência)
       const causasStr = getAllCausesLine(item.ocorrencias || []);
 
-      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total} vezes)* - Alimentador: ${alimentadorStr}`);
-      linhas.push(`   └─ 🔹 Causa : ${causasStr}`);
-      linhas.push('');
+      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total}x)*`);
+      linhas.push(`   ├─ 🧭 Alimentador: ${alimentadorStr}`);
+      linhas.push(`   └─ 🧾 Causas: ${causasStr}`);
       linhas.push('');
 
       globalIndex += 1;
     });
 
     if (restantes > 0) {
-      linhas.push(`…e mais *${restantes}* item(ns) em ${titulo} (refine pelo painel para ver todos).`);
-      linhas.push('');
+      linhas.push(`…e mais *${restantes}* item(ns) em ${titulo} (refine no painel para ver tudo).`);
       linhas.push('');
     }
+
+    linhas.push('');
   };
 
   if (currentElementoFilter === 'TODOS') {
@@ -331,32 +344,39 @@ export function generateRankingText() {
     renderSecao('FUSÍVEL', fus);
     renderSecao('RELIGADOR', rel);
 
-    if (!trafos.length && !fus.length && !rel.length) {
-      linhas.push('OBS: Não reinterou nenhum FUSÍVEL, TRAFO, RELIGADOR');
+    // OBS individuais quando alguma seção não tiver ocorrência
+    const obs = [];
+    if (!trafos.length) obs.push('🔌 Não reiterou nenhum *TRAFO*');
+    if (!fus.length) obs.push('🧯 Não reiterou nenhum *FUSÍVEL*');
+    if (!rel.length) obs.push('⚡ Não reiterou nenhum *RELIGADOR*');
+
+    if (obs.length) {
+      linhas.push('ℹ️ *Observações*');
+      obs.forEach(o => linhas.push(`- ${o}`));
       linhas.push('');
     }
   } else if (currentElementoFilter === 'TRAFO') {
     renderSecao('TRAFO', trafos);
     if (!trafos.length) {
-      linhas.push('OBS: Não reinterou nenhum TRAFO');
+      linhas.push('ℹ️ *Observação:* 🔌 Não reiterou nenhum *TRAFO*');
       linhas.push('');
     }
   } else if (currentElementoFilter === 'FUSIVEL') {
     renderSecao('FUSÍVEL', fus);
     if (!fus.length) {
-      linhas.push('OBS: Não reinterou nenhum FUSÍVEL');
+      linhas.push('ℹ️ *Observação:* 🧯 Não reiterou nenhum *FUSÍVEL*');
       linhas.push('');
     }
   } else if (currentElementoFilter === 'RELIGADOR') {
     renderSecao('RELIGADOR', rel);
     if (!rel.length) {
-      linhas.push('OBS: Não reinterou nenhum RELIGADOR');
+      linhas.push('ℹ️ *Observação:* ⚡ Não reiterou nenhum *RELIGADOR*');
       linhas.push('');
     }
   }
 
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  linhas.push('🔗 *Visualizar mais detalhes:*');
+  linhas.push('🔗 *Ver mais detalhes:*');
   linhas.push('https://eilandims-del.github.io/reinteradasenel');
 
   return linhas.join('\n').trim();
@@ -497,7 +517,7 @@ function getAllCausesLine(ocorrencias) {
     .sort((a, b) => b[1] - a[1])
     .map(([name]) => name);
 
-  const MAX_CAUSAS = 12; // ajuste se quiser
+  const MAX_CAUSAS = 12;
   const sliced = sorted.slice(0, MAX_CAUSAS);
   const rest = sorted.length - sliced.length;
 
