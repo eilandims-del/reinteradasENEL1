@@ -229,195 +229,97 @@ export class DataService {
     }
 
     /**
-     * Buscar todos os dados com paginação/streaming para suportar grandes volumes (10k+)
-     * Nota: Filtros de data são aplicados no cliente para maior flexibilidade
+     * Buscar dados com opção de filtro por período NO FIRESTORE (reduz leituras)
+     * filters: { dataInicial?: 'YYYY-MM-DD', dataFinal?: 'YYYY-MM-DD' }
      */
     static async getData(filters = {}) {
         try {
-            // Firestore tem limite de 1MB por query, então usamos paginação
-            const BATCH_SIZE = 1000; // Máximo seguro por query
-            let query = db.collection(this.COLLECTION_NAME).orderBy('DATA', 'desc').limit(BATCH_SIZE);
+            const di = String(filters?.dataInicial || '').trim();
+            const df = String(filters?.dataFinal || '').trim();
+
+            const hasDI = /^\d{4}-\d{2}-\d{2}$/.test(di);
+            const hasDF = /^\d{4}-\d{2}-\d{2}$/.test(df);
+
+            let baseQuery = db.collection(this.COLLECTION_NAME);
+
+            // Range filter exige orderBy no mesmo campo
+            if (hasDI) baseQuery = baseQuery.where('DATA', '>=', di);
+            if (hasDF) baseQuery = baseQuery.where('DATA', '<=', df);
+
+            baseQuery = baseQuery.orderBy('DATA', 'desc');
+
+            const BATCH_SIZE = (hasDI || hasDF) ? 5000 : 1000;
+            const MAX_BATCHES = (hasDI || hasDF) ? 5 : 20;
+
             const data = [];
             let lastDoc = null;
             let batchCount = 0;
-            const MAX_BATCHES = 20; // Limite de segurança: 20k registros (pode aumentar se necessário)
 
-            console.log('[GET DATA] Iniciando busca de dados com paginação...');
+            console.log('[GET DATA] Iniciando busca...', { di, df, hasDI, hasDF });
 
-            // Buscar em batches até não haver mais documentos
             do {
-                try {
-                    if (lastDoc) {
-                        query = db.collection(this.COLLECTION_NAME)
-                            .orderBy('DATA', 'desc')
-                            .startAfter(lastDoc)
-                            .limit(BATCH_SIZE);
-                    }
+                let q = baseQuery.limit(BATCH_SIZE);
 
-                    const snapshot = await query.get();
-                    
-                    if (snapshot.empty) {
-                        break;
-                    }
+                if (lastDoc) {
+                    q = db.collection(this.COLLECTION_NAME);
 
-                    batchCount++;
-                    console.log(`[GET DATA] Batch ${batchCount}: ${snapshot.size} documentos carregados (total: ${data.length + snapshot.size})`);
+                    if (hasDI) q = q.where('DATA', '>=', di);
+                    if (hasDF) q = q.where('DATA', '<=', df);
 
-                    snapshot.forEach(doc => {
-                const docData = doc.data();
-                
-                // Converter Timestamp do Firestore para string ISO usando métodos locais
-                // IMPORTANTE: NUNCA usar toISOString() que aplica UTC e causa deslocamento de dia
-                if (docData.DATA) {
-                    if (docData.DATA.toDate && typeof docData.DATA.toDate === 'function') {
-                        // É Timestamp do Firestore - usar métodos locais
-                        const date = docData.DATA.toDate();
-                        const year = date.getFullYear();
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        docData.DATA = `${year}-${month}-${day}`;
-                    } else if (docData.DATA instanceof Date) {
-                        // BUG CORRIGIDO: Date objects criados com new Date("YYYY-MM-DD") são UTC
-                        // Verificar se há diferença entre UTC e local para corrigir
-                        const date = docData.DATA;
-                        const utcDay = date.getUTCDate();
-                        const localDay = date.getDate();
-                        const utcMonth = date.getUTCMonth();
-                        const localMonth = date.getMonth();
-                        
-                        let year, month, day;
-                        if (utcDay !== localDay || utcMonth !== localMonth) {
-                            // Date foi criado incorretamente, usar valores UTC e recriar como local
-                            year = date.getUTCFullYear();
-                            month = date.getUTCMonth() + 1;
-                            day = date.getUTCDate();
-                            // Recriar como data local
-                            const localDate = new Date(year, month - 1, day);
-                            year = localDate.getFullYear();
-                            month = localDate.getMonth() + 1;
-                            day = localDate.getDate();
-                        } else {
-                            // Date foi criado corretamente, usar métodos locais
-                            year = date.getFullYear();
-                            month = date.getMonth() + 1;
-                            day = date.getDate();
-                        }
-                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    } else if (typeof docData.DATA === 'string') {
-                        // Já é string, garantir formato ISO sem usar new Date()
-                        if (!/^\d{4}-\d{2}-\d{2}$/.test(docData.DATA.trim())) {
-                            // Tentar parse manual
-                            const trimmed = docData.DATA.trim();
-                            // Formato brasileiro: DD/MM/YYYY
-                            if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/.test(trimmed)) {
-                                const parts = trimmed.split(/[\/\-\.]/);
-                                if (parts.length === 3) {
-                                    const day = parseInt(parts[0], 10);
-                                    const month = parseInt(parts[1], 10);
-                                    const year = parseInt(parts[2], 10);
-                                    docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                }
-                            } else {
-                                // Tentar parse manual de formato YYYY/MM/DD ou YYYY-MM-DD
-                                const reverseMatch = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-                                if (reverseMatch) {
-                                    const year = parseInt(reverseMatch[1], 10);
-                                    const month = parseInt(reverseMatch[2], 10);
-                                    const day = parseInt(reverseMatch[3], 10);
-                                    docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                } else {
-                                    // Último recurso - usar new Date() apenas se necessário
-                                    // BUG CORRIGIDO: Aplicar mesma lógica de correção para evitar "-1 dia"
-                                    const parsed = new Date(trimmed);
-                                    if (!isNaN(parsed.getTime())) {
-                                        // Verificar se há diferença UTC/local
-                                        const utcDay = parsed.getUTCDate();
-                                        const localDay = parsed.getDate();
-                                        let year, month, day;
-                                        
-                                        if (utcDay !== localDay) {
-                                            // Date foi criado incorretamente, usar valores UTC e recriar como local
-                                            year = parsed.getUTCFullYear();
-                                            month = parsed.getUTCMonth() + 1;
-                                            day = parsed.getUTCDate();
-                                            const localDate = new Date(year, month - 1, day);
-                                            year = localDate.getFullYear();
-                                            month = localDate.getMonth() + 1;
-                                            day = localDate.getDate();
-                                        } else {
-                                            // Usar métodos locais normalmente
-                                            year = parsed.getFullYear();
-                                            month = parsed.getMonth() + 1;
-                                            day = parsed.getDate();
-                                        }
-                                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                    }
-                                }
-                            }
-                        }
-                        }
-                    }
-                    
-                        data.push({
-                            id: doc.id,
-                            ...docData
-                        });
-                    });
+                    q = q.orderBy('DATA', 'desc').startAfter(lastDoc).limit(BATCH_SIZE);
+                }
 
-                    // Preparar próximo batch
-                    lastDoc = snapshot.docs[snapshot.docs.length - 1];
-                    
-                    // Limite de segurança para evitar loops infinitos
-                    if (batchCount >= MAX_BATCHES) {
-                        console.warn(`[GET DATA] Limite de batches atingido (${MAX_BATCHES}). Total carregado: ${data.length} registros`);
-                        break;
-                    }
+                const snapshot = await q.get();
 
-                    // Throttling entre batches para não sobrecarregar
-                    if (snapshot.size === BATCH_SIZE) {
-                        await this.sleep(100); // Pequeno delay entre batches
-                    }
-
-                } catch (batchError) {
-                    console.error(`[GET DATA] Erro ao buscar batch ${batchCount + 1}:`, batchError);
-                    // Continuar com os dados já carregados
+                if (snapshot.empty) {
                     break;
                 }
-            } while (lastDoc);
 
-            console.log(`[GET DATA] Busca concluída: ${data.length} registros carregados em ${batchCount} batches`);
-            return { success: true, data };
-        } catch (error) {
-            console.error('Erro ao buscar dados:', error);
-            // Se erro de índice, tenta sem orderBy
-            try {
-                const snapshot = await db.collection(this.COLLECTION_NAME).get();
-                const data = [];
+                batchCount++;
+                console.log(`[GET DATA] Batch ${batchCount}: ${snapshot.size} documentos carregados (total: ${data.length + snapshot.size})`);
 
                 snapshot.forEach(doc => {
                     const docData = doc.data();
-                    
-                    // Converter Timestamp do Firestore para string ISO usando métodos locais
-                    // IMPORTANTE: NUNCA usar toISOString() que aplica UTC e causa deslocamento
+
+                    // Converter Timestamp/Date para string ISO usando métodos locais (sem UTC)
                     if (docData.DATA) {
                         if (docData.DATA.toDate && typeof docData.DATA.toDate === 'function') {
-                            // É Timestamp do Firestore - usar métodos locais
                             const date = docData.DATA.toDate();
                             const year = date.getFullYear();
                             const month = String(date.getMonth() + 1).padStart(2, '0');
                             const day = String(date.getDate()).padStart(2, '0');
                             docData.DATA = `${year}-${month}-${day}`;
                         } else if (docData.DATA instanceof Date) {
-                            // É objeto Date - usar métodos locais
-                            const year = docData.DATA.getFullYear();
-                            const month = String(docData.DATA.getMonth() + 1).padStart(2, '0');
-                            const day = String(docData.DATA.getDate()).padStart(2, '0');
-                            docData.DATA = `${year}-${month}-${day}`;
+                            const date = docData.DATA;
+
+                            const utcDay = date.getUTCDate();
+                            const localDay = date.getDate();
+                            const utcMonth = date.getUTCMonth();
+                            const localMonth = date.getMonth();
+
+                            let year, month, day;
+
+                            if (utcDay !== localDay || utcMonth !== localMonth) {
+                                // Date criado como UTC (ex.: new Date("YYYY-MM-DD"))
+                                year = date.getUTCFullYear();
+                                month = date.getUTCMonth() + 1;
+                                day = date.getUTCDate();
+
+                                const localDate = new Date(year, month - 1, day);
+                                year = localDate.getFullYear();
+                                month = localDate.getMonth() + 1;
+                                day = localDate.getDate();
+                            } else {
+                                year = date.getFullYear();
+                                month = date.getMonth() + 1;
+                                day = date.getDate();
+                            }
+
+                            docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                         } else if (typeof docData.DATA === 'string') {
-                            // Já é string, garantir formato ISO sem usar new Date()
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(docData.DATA.trim())) {
-                                // Tentar parse manual
-                                const trimmed = docData.DATA.trim();
+                            const trimmed = docData.DATA.trim();
+
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
                                 // Formato brasileiro: DD/MM/YYYY
                                 if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/.test(trimmed)) {
                                     const parts = trimmed.split(/[\/\-\.]/);
@@ -428,35 +330,48 @@ export class DataService {
                                         docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                     }
                                 } else {
-                                    // Último recurso - usar new Date() apenas se necessário
-                                    const parsed = new Date(trimmed);
-                                    if (!isNaN(parsed.getTime())) {
-                                        const year = parsed.getFullYear();
-                                        const month = String(parsed.getMonth() + 1).padStart(2, '0');
-                                        const day = String(parsed.getDate()).padStart(2, '0');
-                                        docData.DATA = `${year}-${month}-${day}`;
+                                    // Formato reverso: YYYY/MM/DD
+                                    const m = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+                                    if (m) {
+                                        const year = parseInt(m[1], 10);
+                                        const month = parseInt(m[2], 10);
+                                        const day = parseInt(m[3], 10);
+                                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                                     }
                                 }
                             }
                         }
                     }
-                    
+
                     data.push({
                         id: doc.id,
                         ...docData
                     });
                 });
 
-                    console.log(`[GET DATA] Fallback concluído: ${data.length} registros carregados`);
-                return { success: true, data };
-            } catch (retryError) {
-                console.error('[GET DATA] Erro no fallback:', retryError);
-                return {
-                    success: false,
-                    error: retryError.message,
-                    data: []
-                };
-            }
+                lastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+                if (batchCount >= MAX_BATCHES) {
+                    console.warn(`[GET DATA] Limite de batches atingido (${MAX_BATCHES}). Total carregado: ${data.length} registros`);
+                    break;
+                }
+
+                // Throttling leve
+                if (snapshot.size === BATCH_SIZE) {
+                    await this.sleep(80);
+                }
+
+            } while (lastDoc);
+
+            console.log(`[GET DATA] Busca concluída: ${data.length} registros carregados em ${batchCount} batches`);
+            return { success: true, data };
+        } catch (error) {
+            console.error('[GET DATA] Erro ao buscar dados:', error);
+            return {
+                success: false,
+                error: error.message,
+                data: []
+            };
         }
     }
 
@@ -923,4 +838,3 @@ export class DataService {
         }
     }
 }
-

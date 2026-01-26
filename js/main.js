@@ -3,7 +3,7 @@
  */
 
 import { DataService } from './services/firebase-service.js';
-import { filterByDateRange, getAllColumns, getOcorrenciasByElemento } from './services/data-service.js';
+import { getAllColumns, getOcorrenciasByElemento } from './services/data-service.js';
 import { updateRanking, generateRankingText, setElementoFilter, setElementoSearch } from './components/ranking.js';
 import { updateCharts } from './components/charts.js';
 /** import { updateHeatmap, initMap } from './components/mapa.js';  */
@@ -21,17 +21,26 @@ async function init() {
   initEventListeners();
   /** initMap(); */
 
-  await loadData();
+  // Economia: não carrega tudo no F5
+  renderEmptyState();
+}
+
+function renderEmptyState() {
+  const rankingContainer = document.getElementById('rankingElemento');
+  if (rankingContainer) {
+    rankingContainer.innerHTML =
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Selecione um período e clique em <b>Aplicar Filtro</b> para carregar os dados.</p>';
+  }
 }
 
 /**
  * Inicializar event listeners
  */
 function initEventListeners() {
-  // Fechar modal detalhes (X) - (opcional, redundante com delegação do modal.js, mas ok)
+  // Fechar modal detalhes (X)
   document.getElementById('fecharModal')?.addEventListener('click', () => closeModal('modalDetalhes'));
 
-  // Fechar modal info (X) - (opcional, redundante com delegação do modal.js, mas ok)
+  // Fechar modal info (X)
   document.getElementById('fecharModalInfo')?.addEventListener('click', () => closeModal('modalAdicionarInfo'));
 
   // Exportar Excel (Detalhes do ELEMENTO)
@@ -67,7 +76,8 @@ function initEventListeners() {
   btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); });
   btnTrafo?.addEventListener('click', () => { setElementoFilter('TRAFO'); setActive(btnTrafo); });
   btnFusivel?.addEventListener('click', () => { setElementoFilter('FUSIVEL'); setActive(btnFusivel); });
-  btnOutros?.addEventListener('click', () => { setElementoFilter('RELIGADOR'); setActive(btnReligador); });
+  // BUG FIX: btnReligador não existe; é btnOutros
+  btnOutros?.addEventListener('click', () => { setElementoFilter('RELIGADOR'); setActive(btnOutros); });
 
   // estado inicial visual
   setElementoFilter('TODOS');
@@ -96,30 +106,6 @@ function initEventListeners() {
 }
 
 /**
- * Carregar dados do Firestore
- */
-async function loadData() {
-  const rankingContainer = document.getElementById('rankingElemento');
-  if (rankingContainer) {
-    rankingContainer.innerHTML =
-      '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando dados...</div>';
-  }
-
-  const result = await DataService.getData();
-
-  if (result.success && result.data.length > 0) {
-    currentData = result.data;
-    renderAll();
-  } else {
-    if (rankingContainer) {
-      rankingContainer.innerHTML =
-        '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum dado disponível. Faça upload de uma planilha no painel administrativo.</p>';
-    }
-    showToast('Nenhum dado encontrado. Faça upload de uma planilha.', 'error');
-  }
-}
-
-/**
  * Renderizar todos os componentes
  */
 function renderAll() {
@@ -134,19 +120,49 @@ function renderAll() {
 }
 
 /**
- * Aplicar filtros (com debounce)
+ * Carregar dados do Firestore PARA UM PERÍODO
  */
-const applyFiltersDebounced = debounce(() => {
+async function loadDataByPeriod(di, df) {
+  const rankingContainer = document.getElementById('rankingElemento');
+  if (rankingContainer) {
+    rankingContainer.innerHTML =
+      '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando dados do período...</div>';
+  }
+
+  const result = await DataService.getData({ dataInicial: di, dataFinal: df });
+
+  if (result.success && result.data.length > 0) {
+    currentData = result.data;
+    renderAll();
+    showToast(`Filtro aplicado: ${currentData.length} registro(s) encontrado(s).`, 'success');
+  } else {
+    currentData = [];
+
+    if (rankingContainer) {
+      rankingContainer.innerHTML =
+        '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum dado encontrado para o período informado.</p>';
+    }
+    showToast('Nenhum dado encontrado para o período.', 'error');
+  }
+}
+
+/**
+ * Aplicar filtros (com debounce)
+ * Agora: carrega do Firestore por período (economia de leituras)
+ */
+const applyFiltersDebounced = debounce(async () => {
   const dataInicial = document.getElementById('dataInicial')?.value;
   const dataFinal = document.getElementById('dataFinal')?.value;
 
-  const filteredData = filterByDateRange(currentData, dataInicial, dataFinal);
+  const di = dataInicial ? dataInicial.split('T')[0] : '';
+  const df = dataFinal ? dataFinal.split('T')[0] : '';
 
-  requestAnimationFrame(() => {
-    updateRanking(filteredData);
-    updateCharts(filteredData);
-    showToast(`Filtro aplicado: ${filteredData.length} registro(s) encontrado(s).`, 'success');
-  });
+  if (!di && !df) {
+    showToast('Informe ao menos uma data (inicial ou final) para carregar.', 'error');
+    return;
+  }
+
+  await loadDataByPeriod(di, df);
 }, 300);
 
 function applyFilters() {
@@ -162,8 +178,9 @@ function clearFilters() {
   if (di) di.value = '';
   if (df) df.value = '';
 
-  renderAll();
-  showToast('Filtros removidos.', 'success');
+  currentData = [];
+  renderEmptyState();
+  showToast('Filtros removidos. Selecione um período para carregar.', 'success');
 }
 
 /**
@@ -199,7 +216,6 @@ function openModalAddInfo() {
 
     return true;
   });
-
 
   const listaColunas = document.getElementById('listaColunas');
   if (!listaColunas) return;
