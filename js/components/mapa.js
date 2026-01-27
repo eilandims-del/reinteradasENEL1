@@ -48,71 +48,114 @@ function clamp01(x) {
 async function loadKML(url = 'assets/doc.kml') {
   if (kmlLoading) return kmlLoading;
 
+  // normaliza
+  const norm = (v) =>
+    String(v ?? '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  // tenta extrair uma “chave” do alimentador a partir do nome
+  // (funciona para vários formatos diferentes)
+  function extractAlimKey(nameRaw) {
+    const s = norm(nameRaw)
+      .replace(/\bALIMENTADOR\b/g, '')
+      .replace(/\bALIMENT\b/g, '')
+      .replace(/\bALIM\b/g, '')
+      .replace(/\bCIRCUITO\b/g, '')
+      .trim();
+
+    // pega o primeiro “token” forte (ex.: QXD01, IPU 02, ARARAS I, etc)
+    // 1) padrões com letras + números
+    let m = s.match(/\b([A-Z]{2,6}\s?\d{1,3})\b/);
+    if (m) return m[1].replace(/\s+/g, '');
+
+    // 2) às vezes vem só número ou código curto
+    m = s.match(/\b(\d{2,4})\b/);
+    if (m) return m[1];
+
+    // 3) fallback: primeiro token
+    const tok = s.split(' ')[0];
+    return tok || null;
+  }
+
+  function parseCoordString(coordText) {
+    // KML: "lon,lat,alt lon,lat,alt ..."
+    const parts = String(coordText || '').trim().split(/\s+/g);
+    const coords = [];
+    for (const p of parts) {
+      const [lonStr, latStr] = p.split(',');
+      const lon = Number(lonStr);
+      const lat = Number(latStr);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) coords.push([lat, lon]);
+    }
+    return coords;
+  }
+
   kmlLoading = (async () => {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Falha ao carregar KML: ${res.status} ${res.statusText}`);
-    const kmlText = await res.text();
 
+    const kmlText = await res.text();
     const xml = new DOMParser().parseFromString(kmlText, 'text/xml');
 
-    // ✅ toGeoJSON (via script no index.html)
-    const geojson = window.toGeoJSON.kml(xml);
+    const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
 
-    // 1) montar linhas por alimentador (prefixo)
-    const byPrefix = new Map(); // prefix -> features[]
-    const centroidAcc = new Map(); // prefix -> {sumLat,sumLng,n}
+    // ✅ coords exatas (Point) por alimentador
+    const coordsOut = {}; // keyNorm -> {lat,lng,display}
+    // ✅ linhas por alimentador
+    const byKey = new Map(); // key -> array de latlng arrays (polylines)
 
-    for (const f of geojson.features || []) {
-      const nameRaw = (f.properties && (f.properties.name || f.properties.NAME)) || '';
-      const prefix = extractAlimPrefix(normKey(nameRaw));
-      if (!prefix) continue;
+    for (const pm of placemarks) {
+      const nameNode = pm.getElementsByTagName('name')[0];
+      const nameRaw = nameNode ? nameNode.textContent : '';
+      const key = extractAlimKey(nameRaw);
+      if (!key) continue;
 
-      // guarda feature
-      if (!byPrefix.has(prefix)) byPrefix.set(prefix, []);
-      byPrefix.get(prefix).push(f);
+      const keyNorm = norm(key);
 
-      // calcula um "centro" simples dos pontos das linhas (para marcador / heat)
-      // pega todos os coords das geometrias (LineString / MultiLineString)
-      const coords = [];
-      const g = f.geometry;
+      // 1) Point (coordenada exata)
+      const pointNode = pm.getElementsByTagName('Point')[0];
+      if (pointNode) {
+        const coordNode = pointNode.getElementsByTagName('coordinates')[0];
+        if (coordNode) {
+          const pts = parseCoordString(coordNode.textContent);
+          if (pts.length) avoid: {
+            // pega o 1º ponto do Point
+            const [lat, lng] = pts[0];
+            coordsOut[keyNorm] = { lat, lng, display: key };
+          }
+        }
+      }
 
-      if (!g) continue;
-      if (g.type === 'LineString') coords.push(...g.coordinates);
-      if (g.type === 'MultiLineString') g.coordinates.forEach(ls => coords.push(...ls));
-      if (g.type === 'Point') coords.push(g.coordinates);
+      // 2) LineString / MultiGeometry (trajeto)
+      const lineStrings = Array.from(pm.getElementsByTagName('LineString'));
+      for (const ls of lineStrings) {
+        const coordNode = ls.getElementsByTagName('coordinates')[0];
+        if (!coordNode) continue;
+        const latlngs = parseCoordString(coordNode.textContent);
+        if (!latlngs.length) continue;
 
-      for (const c of coords) {
-        const [lon, lat] = c;
-        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-
-        if (!centroidAcc.has(prefix)) centroidAcc.set(prefix, { sumLat: 0, sumLng: 0, n: 0 });
-        const a = centroidAcc.get(prefix);
-        a.sumLat += lat;
-        a.sumLng += lon;
-        a.n += 1;
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(latlngs);
       }
     }
 
-    // 2) gerar coords por prefixo (centroide simples)
-    const coordsOut = {};
-    centroidAcc.forEach((a, prefix) => {
-      coordsOut[normKey(prefix)] = {
-        lat: a.sumLat / a.n,
-        lng: a.sumLng / a.n,
-        display: prefix
-      };
-    });
-
     alimentadorCoords = coordsOut;
-    alimentadorLines = byPrefix;
+    alimentadorLines = byKey;
 
-    console.log('[KML] alimentadores carregados:', Object.keys(coordsOut).length, 'linhas:', byPrefix.size);
+    console.log('[KML] alimentadores carregados:', Object.keys(coordsOut).length, 'linhas:', byKey.size);
 
-    return { coordsOut, byPrefix };
+    return { coordsOut, byKey };
   })();
 
   return kmlLoading;
 }
+
 
 /* =========================
    UI: Toggle (simples)
