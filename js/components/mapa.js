@@ -48,7 +48,6 @@ function clamp01(x) {
 async function loadKML(url = 'assets/doc.kml') {
   if (kmlLoading) return kmlLoading;
 
-  // normaliza
   const norm = (v) =>
     String(v ?? '')
       .trim()
@@ -59,8 +58,6 @@ async function loadKML(url = 'assets/doc.kml') {
       .replace(/\s+/g, ' ')
       .trim();
 
-  // tenta extrair uma “chave” do alimentador a partir do nome
-  // (funciona para vários formatos diferentes)
   function extractAlimKey(nameRaw) {
     const s = norm(nameRaw)
       .replace(/\bALIMENTADOR\b/g, '')
@@ -69,16 +66,11 @@ async function loadKML(url = 'assets/doc.kml') {
       .replace(/\bCIRCUITO\b/g, '')
       .trim();
 
-    // pega o primeiro “token” forte (ex.: QXD01, IPU 02, ARARAS I, etc)
-    // 1) padrões com letras + números
+    // 1) letras + números (QXD01, IPU02, etc)
     let m = s.match(/\b([A-Z]{2,6}\s?\d{1,3})\b/);
     if (m) return m[1].replace(/\s+/g, '');
 
-    // 2) às vezes vem só número ou código curto
-    m = s.match(/\b(\d{2,4})\b/);
-    if (m) return m[1];
-
-    // 3) fallback: primeiro token
+    // 2) fallback: primeiro token
     const tok = s.split(' ')[0];
     return tok || null;
   }
@@ -105,43 +97,65 @@ async function loadKML(url = 'assets/doc.kml') {
 
     const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
 
-    // ✅ coords exatas (Point) por alimentador
-    const coordsOut = {}; // keyNorm -> {lat,lng,display}
-    // ✅ linhas por alimentador
-    const byKey = new Map(); // key -> array de latlng arrays (polylines)
+    const coordsOut = {};           // keyNorm -> {lat,lng,display}
+    const byKey = new Map();        // keyDisplay -> array de latlng arrays (polylines)
+    const centroidAcc = new Map();  // keyNorm -> {sumLat,sumLng,n,display}
 
     for (const pm of placemarks) {
       const nameNode = pm.getElementsByTagName('name')[0];
       const nameRaw = nameNode ? nameNode.textContent : '';
-      const key = extractAlimKey(nameRaw);
-      if (!key) continue;
+      const keyDisplay = extractAlimKey(nameRaw);
+      if (!keyDisplay) continue;
 
-      const keyNorm = norm(key);
+      const keyNorm = norm(keyDisplay);
 
-      // 1) Point (coordenada exata)
+      // 1) Se existir Point, usa (nem sempre existe)
       const pointNode = pm.getElementsByTagName('Point')[0];
       if (pointNode) {
         const coordNode = pointNode.getElementsByTagName('coordinates')[0];
         if (coordNode) {
           const pts = parseCoordString(coordNode.textContent);
-          if (pts.length) avoid: {
-            // pega o 1º ponto do Point
+          if (pts.length) {
             const [lat, lng] = pts[0];
-            coordsOut[keyNorm] = { lat, lng, display: key };
+            coordsOut[keyNorm] = { lat, lng, display: keyDisplay };
           }
         }
       }
 
-      // 2) LineString / MultiGeometry (trajeto)
+      // 2) Linhas: LineString (vamos usar para desenhar E para centroide)
       const lineStrings = Array.from(pm.getElementsByTagName('LineString'));
       for (const ls of lineStrings) {
         const coordNode = ls.getElementsByTagName('coordinates')[0];
         if (!coordNode) continue;
+
         const latlngs = parseCoordString(coordNode.textContent);
         if (!latlngs.length) continue;
 
-        if (!byKey.has(key)) byKey.set(key, []);
-        byKey.get(key).push(latlngs);
+        // guarda as linhas pra renderizar
+        if (!byKey.has(keyDisplay)) byKey.set(keyDisplay, []);
+        byKey.get(keyDisplay).push(latlngs);
+
+        // acumula para centroide (se não tiver Point)
+        if (!centroidAcc.has(keyNorm)) {
+          centroidAcc.set(keyNorm, { sumLat: 0, sumLng: 0, n: 0, display: keyDisplay });
+        }
+        const acc = centroidAcc.get(keyNorm);
+        for (const [lat, lng] of latlngs) {
+          acc.sumLat += lat;
+          acc.sumLng += lng;
+          acc.n += 1;
+        }
+      }
+    }
+
+    // ✅ Se não tinha Point, cria coordenada a partir do centroide das linhas
+    for (const [keyNorm, acc] of centroidAcc.entries()) {
+      if (!coordsOut[keyNorm] && acc.n > 0) {
+        coordsOut[keyNorm] = {
+          lat: acc.sumLat / acc.n,
+          lng: acc.sumLng / acc.n,
+          display: acc.display
+        };
       }
     }
 
@@ -155,6 +169,7 @@ async function loadKML(url = 'assets/doc.kml') {
 
   return kmlLoading;
 }
+
 
 
 /* =========================
