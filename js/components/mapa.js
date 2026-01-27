@@ -1,14 +1,23 @@
-import { generateHeatmapData } from '../services/data-service.js';
+import {
+  generateHeatmapByAlimentador,
+  generateHeatmapByConjunto
+} from '../services/data-service.js';
 
 let map;
 let heatLayer;
 let markersLayer;
 
-// 🔥 coords por alimentador vindas do KML
 let alimentadorCoords = null;
 let kmlLoading = null;
 
-// Normalização forte (igual ao service)
+let currentMode = 'ALIMENTADOR'; // ALIMENTADOR | CONJUNTO
+let lastData = [];
+
+const MAX_INTENSITY = 50;
+
+/* =========================
+   HELPERS
+========================= */
 function normKey(v) {
   return String(v ?? '')
     .trim()
@@ -16,83 +25,70 @@ function normKey(v) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s]/g, ' ')
-    .replace(/_/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// Pega prefixo tipo QXD01 de nomes QXD01P6 etc.
 function extractAlimPrefix(nameNorm) {
   const m = nameNorm.match(/^([A-Z]{3}\s?\d{2})/);
   if (!m) return null;
-  return m[1].replace(/\s+/g, ''); // remove espaço se vier "QXD 01"
+  return m[1].replace(/\s+/g, '');
 }
 
-// Faz parse do KML e gera centroide por ALIMENTADOR (prefixo)
+/* =========================
+   KML
+========================= */
 async function loadAlimentadoresFromKML(url = 'assets/doc.kml') {
   if (alimentadorCoords) return alimentadorCoords;
   if (kmlLoading) return kmlLoading;
 
   kmlLoading = (async () => {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`Falha ao carregar KML: ${res.status} ${res.statusText}`);
     const text = await res.text();
 
     const xml = new DOMParser().parseFromString(text, 'text/xml');
     const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
 
-    // prefix -> acumuladores
-    const acc = new Map(); // prefix -> {sumLat,sumLng,n, display}
+    const acc = new Map();
 
     for (const pm of placemarks) {
       const nameEl = pm.getElementsByTagName('name')[0];
       const nameRaw = nameEl ? nameEl.textContent : '';
-      const nameNorm = normKey(nameRaw);
-      const prefix = extractAlimPrefix(nameNorm);
+      const prefix = extractAlimPrefix(normKey(nameRaw));
       if (!prefix) continue;
 
-      // pega todas as <coordinates> dentro do placemark
       const coordsEls = Array.from(pm.getElementsByTagName('coordinates'));
-      if (!coordsEls.length) continue;
-
       let sumLat = 0, sumLng = 0, n = 0;
 
-      for (const cEl of coordsEls) {
-        const raw = (cEl.textContent || '').trim();
-        if (!raw) continue;
-
-        // coordenadas são "lon,lat,alt" separadas por espaços
-        const parts = raw.split(/\s+/);
-        for (const p of parts) {
-          const [lonStr, latStr] = p.split(',');
-          const lon = parseFloat(lonStr);
-          const lat = parseFloat(latStr);
-          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-          sumLat += lat;
-          sumLng += lon;
-          n += 1;
-        }
-      }
+      coordsEls.forEach(cEl => {
+        const parts = (cEl.textContent || '').trim().split(/\s+/);
+        parts.forEach(p => {
+          const [lon, lat] = p.split(',').map(Number);
+          if (Number.isFinite(lat) && Number.isFinite(lon)) {
+            sumLat += lat;
+            sumLng += lon;
+            n++;
+          }
+        });
+      });
 
       if (n === 0) continue;
 
-      if (!acc.has(prefix)) acc.set(prefix, { sumLat: 0, sumLng: 0, n: 0, display: prefix });
+      if (!acc.has(prefix)) acc.set(prefix, { sumLat: 0, sumLng: 0, n: 0 });
       const a = acc.get(prefix);
       a.sumLat += sumLat;
       a.sumLng += sumLng;
       a.n += n;
-      a.display = prefix; // ex.: QXD01
     }
 
-    // monta mapa final: ALIM_NORMALIZADO -> {lat,lng,display}
     const out = {};
-    for (const [prefix, a] of acc.entries()) {
-      out[normKey(prefix)] = {
-        lat: a.sumLat / a.n,
-        lng: a.sumLng / a.n,
-        display: prefix
+    acc.forEach((v, k) => {
+      out[normKey(k)] = {
+        lat: v.sumLat / v.n,
+        lng: v.sumLng / v.n,
+        display: k
       };
-    }
+    });
 
     console.log('[KML] alimentadores carregados:', Object.keys(out).length);
     alimentadorCoords = out;
@@ -102,11 +98,10 @@ async function loadAlimentadoresFromKML(url = 'assets/doc.kml') {
   return kmlLoading;
 }
 
+/* =========================
+   MAPA
+========================= */
 export function initMap() {
-  const el = document.getElementById('mapaCeara');
-  if (!el) return;
-
-  // ✅ evita “Map container is already initialized”
   if (map) return;
 
   map = L.map('mapaCeara').setView([-4.8, -39.5], 7);
@@ -116,72 +111,62 @@ export function initMap() {
     attribution: '© OpenStreetMap'
   }).addTo(map);
 
-  // ✅ grupo de marcadores
   markersLayer = L.layerGroup().addTo(map);
 
-  // ✅ dispara carregamento do KML já na inicialização
-  loadAlimentadoresFromKML('assets/doc.kml').catch(err => {
-    console.error('[KML] Erro ao carregar:', err);
-  });
+  loadAlimentadoresFromKML();
 }
 
-export function updateHeatmap(data) {
-  if (!map) initMap();
-  if (!map) return;
+function renderHeatmap(data) {
+  if (!map || !data?.length) return;
 
-  // Se KML ainda não carregou, não desenha (evita points vazios)
-  if (!alimentadorCoords) {
-    loadAlimentadoresFromKML('assets/doc.kml').catch(err => console.error(err));
-    return;
+  let points = [];
+
+  if (currentMode === 'ALIMENTADOR' && alimentadorCoords) {
+    points = generateHeatmapByAlimentador(data, alimentadorCoords);
+  } else if (currentMode === 'CONJUNTO') {
+    points = generateHeatmapByConjunto(data);
   }
 
-  const points = generateHeatmapData(data, alimentadorCoords);
+  if (!points.length) return;
 
-  if (!points.length) {
-    // limpa camadas se não tem pontos
-    if (heatLayer) {
-      map.removeLayer(heatLayer);
-      heatLayer = null;
-    }
-    if (markersLayer) markersLayer.clearLayers();
-    return;
-  }
-
-  // ✅ remove heat anterior
   if (heatLayer) map.removeLayer(heatLayer);
-
-  // ✅ limpa markers anteriores
-  if (markersLayer) markersLayer.clearLayers();
+  markersLayer.clearLayers();
 
   heatLayer = L.heatLayer(
-    points.map(p => [p.lat, p.lng, p.intensity]),
+    points.map(p => [p.lat, p.lng, Math.min(p.intensity / MAX_INTENSITY, 1)]),
     {
       radius: 28,
       blur: 18,
       maxZoom: 10,
       gradient: {
-        0.30: 'blue',
-        0.60: 'orange',
-        1.00: 'red'
+        0.10: '#6EC6FF',
+        0.30: '#2196F3',
+        0.55: '#FFC107',
+        0.75: '#FF9800',
+        1.00: '#D32F2F'
       }
     }
   ).addTo(map);
 
-  // ✅ bolinhas por alimentador
   points.forEach(p => {
     L.circleMarker([p.lat, p.lng], {
       radius: 7,
-      color: '#ffffff',
+      color: '#fff',
       fillColor: '#003876',
       fillOpacity: 0.85,
       weight: 2
     })
       .bindPopup(
-        `<strong>Alimentador: ${p.conjunto}</strong><br>
-         Reiteradas (total): <b>${p.intensity}</b>`
+        `<strong>${currentMode}: ${p.label}</strong><br>
+         Reiteradas: <b>${p.intensity}</b>`
       )
       .addTo(markersLayer);
   });
 
   map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40] });
+}
+
+export function updateHeatmap(data) {
+  lastData = data;
+  renderHeatmap(data);
 }
