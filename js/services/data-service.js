@@ -163,4 +163,18 @@ function normalizeText(v) {
   
     return heatmapPoints;
   }
+  /**
+ * Retorna todas as colunas presentes nos dados
+ */
+export function getAllColumns(data) {
+    const cols = new Set();
+  
+    data.forEach(item => {
+      Object.keys(item || {}).forEach(key => {
+        cols.add(key);
+      });
+    });
+  
+    return Array.from(cols);
+  }
   
