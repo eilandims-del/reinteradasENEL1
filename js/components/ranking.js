@@ -272,7 +272,7 @@ export function generateRankingText() {
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
       '🔗 *Ver mais detalhes:*',
-      'https://eilandims-del.github.io/reinteradasenel'
+      'https://eilandims-del.github.io/reiteradasenel'
     ].filter(Boolean).join('\n');
   }
 
@@ -288,7 +288,6 @@ export function generateRankingText() {
   linhas.push(`📅 Período: ${getPeriodoLabel()}`);
   if (elementoSearchTerm) linhas.push(`🔎 Busca: *${elementoSearchTerm}*`);
   linhas.push('');
-  linhas.push('📌 *Resumo por elemento*');
   linhas.push('');
 
   const MAX_ITENS_POR_SECAO = 30;
@@ -377,7 +376,7 @@ export function generateRankingText() {
 
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   linhas.push('🔗 *Ver mais detalhes:*');
-  linhas.push('https://eilandims-del.github.io/reinteradasenel');
+  linhas.push('https://eilandims-del.github.io/reiteradasenel');
 
   return linhas.join('\n').trim();
 }
