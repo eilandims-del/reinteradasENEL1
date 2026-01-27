@@ -31,6 +31,13 @@ export function generateRankingElemento(data) {
 /* =========================
    HEATMAP POR ALIMENTADOR (KML)
 ========================= */
+function extractAlimBase(name) {
+  const n = normKey(name);
+  // pega padrão: 3 letras + 2 números (QXD01, CND12, etc)
+  const m = n.match(/([A-Z]{3}\s?\d{2})/);
+  if (!m) return n;
+  return m[1].replace(/\s+/g, '');
+}
 
 // ✅ normalização forte
 function normKey(v) {
@@ -69,7 +76,7 @@ export function generateHeatmapData(data, alimentadorCoords = {}) {
 
   data.forEach(item => {
     const alimRaw = getAlimentadorRaw(item);
-    const alim = normKey(alimRaw);
+    const alim = extractAlimBase(alimRaw);
     const elemento = normKey(item.ELEMENTO || item.ELEMENTOS);
 
     if (!alim || !elemento) return;
@@ -107,6 +114,8 @@ export function generateHeatmapData(data, alimentadorCoords = {}) {
 
   console.log('[HEATMAP-ALIM] alimentadores lidos:', byAlim.size, 'pontos:', heatmap.length);
   if (missing.length) console.warn('[HEATMAP-ALIM] sem coords (top 30):', missing.slice(0, 30));
+  console.warn('[HEATMAP-ALIM] exemplo alimentadores do KML:', Object.keys(alimentadorCoords).slice(0, 30));
+
 
   return heatmap;
 }
