@@ -96,6 +96,13 @@ function lineStyleByIntensity(intensity, max) {
   };
 }
 
+// ✅ reforço de contraste do heatmap (fica mais “quente” sem zoom)
+function boostIntensity(intensity, maxCap) {
+  const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0; // 0..1
+  const y = Math.pow(x, 0.55); // <1 => enfatiza valores altos
+  return y * maxCap;
+}
+
 /* =========================
    UI
 ========================= */
@@ -320,30 +327,37 @@ export async function updateHeatmap(data) {
   if (seq !== renderSeq) return;
   if (!points.length) return;
 
-  // max dinâmico (sem isso a cor “some” quando intensidade é baixa)
   const maxCap = 50;
   const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
   const maxHeat = clamp(maxObserved, 1, maxCap);
 
-  const heatPoints = points.map(p => [p.lat, p.lng, clamp(p.intensity, 0, maxCap)]);
+  // ✅ aplica boost p/ deixar o heat bem mais forte no zoom atual
+  const heatPoints = points.map(p => [
+    p.lat,
+    p.lng,
+    boostIntensity(Number(p.intensity) || 0, maxCap)
+  ]);
 
   heatLayer = L.heatLayer(heatPoints, {
-    radius: mode === 'ALIMENTADOR' ? 26 : 30,
-    blur: mode === 'ALIMENTADOR' ? 18 : 20,
+    // ✅ no CONJUNTO: maior radius = mais “mancha” visível sem zoom
+    radius: mode === 'ALIMENTADOR' ? 26 : 42,
+    // ✅ menos blur = mais contraste
+    blur: mode === 'ALIMENTADOR' ? 18 : 22,
     maxZoom: 12,
-    max: maxHeat,
-    minOpacity: 0.35,
+    // ✅ mantém escala coerente com a legenda 0..50
+    max: maxCap,
+    minOpacity: 0.40,
     gradient: HEAT_GRADIENT
   }).addTo(map);
 
-  // markers
+  // ✅ markers mais discretos (não roubam a atenção do heat)
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
-      radius: mode === 'ALIMENTADOR' ? 6 : 7,
-      color: '#ffffff',
-      fillColor: '#0A4A8C',
-      fillOpacity: 0.85,
-      weight: 2
+      radius: mode === 'ALIMENTADOR' ? 4 : 4,
+      color: 'rgba(255,255,255,0.45)',
+      fillColor: 'rgba(10,74,140,0.25)',
+      fillOpacity: 0.25,
+      weight: 1
     })
       .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
       .addTo(markersLayer);
@@ -362,7 +376,8 @@ export async function updateHeatmap(data) {
       const intensity = intensityByBase.get(baseKey) || 0;
       if (intensity <= 0) continue;
 
-      const style = lineStyleByIntensity(intensity, maxHeat);
+      // ✅ aqui usamos maxCap (0..50) para casar com a legenda/gradiente
+      const style = lineStyleByIntensity(intensity, maxCap);
 
       for (const latlngs of lines) {
         L.polyline(latlngs, style)
