@@ -8,12 +8,15 @@ let kmlLayer;
 let uiMounted = false;
 let mode = 'CONJUNTO'; // 'CONJUNTO' | 'ALIMENTADOR'
 
+// guarda o último dataset para conseguir “trocar modo” e re-renderizar na hora
+let lastData = [];
+
 // alimentadorBaseNorm -> { lat, lng, display }
 let alimentadorCenters = {};
 // alimentadorBaseNorm -> array de linhas (cada linha = [[lat,lng],...])
 let alimentadorLines = {};
 
-// caminho do KML (você disse que está em assets)
+// caminho do KML
 const KML_PATH = 'assets/doc.kml';
 
 /* =========================
@@ -43,11 +46,10 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-// intensidade 0..50 => cor/vermelho + alpha
+// intensidade 0..50 => vermelho com alpha crescente (linhas do KML)
 function lineStyleByIntensity(intensity) {
   const t = clamp(intensity, 0, 50) / 50; // 0..1
-  // vermelho com alpha crescendo (mais escuro quanto mais perto de 50)
-  const alpha = 0.15 + 0.85 * t; // 0.15..1
+  const alpha = 0.12 + 0.88 * t; // 0.12..1
   const weight = 2 + 5 * t;      // 2..7
   return {
     color: `rgba(255, 0, 0, ${alpha.toFixed(3)})`,
@@ -56,11 +58,25 @@ function lineStyleByIntensity(intensity) {
   };
 }
 
+// gradient “real” de heatmap (azul→verde→amarelo→laranja→vermelho)
+function getHeatGradient() {
+  return {
+    0.00: '#2c7bb6', // azul
+    0.25: '#00a6ca', // azul/ciano
+    0.45: '#00ccbc', // ciano
+    0.60: '#90eb9d', // verde
+    0.72: '#f9d057', // amarelo
+    0.84: '#f29e2e', // laranja
+    1.00: '#d7191c'  // vermelho
+  };
+}
+
 function ensureMapUI() {
   if (uiMounted) return;
   uiMounted = true;
 
   const container = map.getContainer();
+
   const wrap = document.createElement('div');
   wrap.style.position = 'absolute';
   wrap.style.top = '10px';
@@ -69,6 +85,12 @@ function ensureMapUI() {
   wrap.style.display = 'flex';
   wrap.style.flexDirection = 'column';
   wrap.style.gap = '8px';
+
+  // Faz o Leaflet não “engolir” clique do UI
+  if (window.L && window.L.DomEvent) {
+    L.DomEvent.disableClickPropagation(wrap);
+    L.DomEvent.disableScrollPropagation(wrap);
+  }
 
   // Toggle
   const box = document.createElement('div');
@@ -83,12 +105,12 @@ function ensureMapUI() {
   box.innerHTML = `
     <div style="margin-bottom:8px;">Mapa:</div>
     <div style="display:flex; gap:6px;">
-      <button id="btnModeConj" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Conjunto</button>
-      <button id="btnModeAlim" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Alimentador</button>
+      <button id="btnModeConj" type="button" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Conjunto</button>
+      <button id="btnModeAlim" type="button" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Alimentador</button>
     </div>
   `;
 
-  // Legenda 0..50
+  // Legenda
   const legend = document.createElement('div');
   legend.style.background = 'rgba(255,255,255,0.92)';
   legend.style.border = '1px solid rgba(0,0,0,0.12)';
@@ -100,12 +122,20 @@ function ensureMapUI() {
   legend.style.fontWeight = '700';
   legend.innerHTML = `
     <div style="margin-bottom:8px;">Intensidade (0 → 50)</div>
-    <div style="height:10px;border-radius:8px;background: linear-gradient(90deg, rgba(255,0,0,0.15), rgba(255,0,0,1));"></div>
+    <div style="height:10px;border-radius:8px;background: linear-gradient(90deg,
+      ${getHeatGradient()[0.00]},
+      ${getHeatGradient()[0.25]},
+      ${getHeatGradient()[0.45]},
+      ${getHeatGradient()[0.60]},
+      ${getHeatGradient()[0.72]},
+      ${getHeatGradient()[0.84]},
+      ${getHeatGradient()[1.00]}
+    );"></div>
     <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:800;">
       <span>0</span><span>50+</span>
     </div>
     <div style="margin-top:6px;font-weight:600;opacity:.85;">
-      Quanto mais perto de 50, mais forte/escuro.
+      Quanto mais perto de 50, mais “quente”.
     </div>
   `;
 
@@ -116,27 +146,34 @@ function ensureMapUI() {
   const btnConj = box.querySelector('#btnModeConj');
   const btnAlim = box.querySelector('#btnModeAlim');
 
+  const baseBtnCss = 'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;';
+  const activeCss = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
+  const inactiveCss = 'background:#fff;color:#111;border-color:#ddd;';
+
   const setActive = () => {
-    const activeStyle = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
-    const inactiveStyle = 'background:#fff;color:#111;border-color:#ddd;';
     if (mode === 'CONJUNTO') {
-      btnConj.style.cssText += activeStyle;
-      btnAlim.style.cssText += inactiveStyle;
+      btnConj.style.cssText = baseBtnCss + activeCss;
+      btnAlim.style.cssText = baseBtnCss + inactiveCss;
     } else {
-      btnAlim.style.cssText += activeStyle;
-      btnConj.style.cssText += inactiveStyle;
+      btnAlim.style.cssText = baseBtnCss + activeCss;
+      btnConj.style.cssText = baseBtnCss + inactiveCss;
     }
   };
 
-  btnConj.addEventListener('click', () => {
+  btnConj.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     mode = 'CONJUNTO';
     setActive();
-    // força re-render na próxima updateHeatmap (o main chama sempre)
+    await updateHeatmap(lastData);
   });
 
-  btnAlim.addEventListener('click', () => {
+  btnAlim.addEventListener('click', async (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
     mode = 'ALIMENTADOR';
     setActive();
+    await updateHeatmap(lastData);
   });
 
   setActive();
@@ -164,7 +201,6 @@ function parseKmlLinesToIndex(kmlText) {
     const base = extractAlimBase(rawName);
     const baseKey = normKey(base);
 
-    // pode ter múltiplos LineString por placemark
     const lineStrings = Array.from(pm.getElementsByTagName('LineString'));
     for (const ls of lineStrings) {
       const coordsNode = ls.getElementsByTagName('coordinates')[0];
@@ -189,13 +225,11 @@ function parseKmlLinesToIndex(kmlText) {
       linesByBase[baseKey].push(pairs);
       totalLines++;
 
-      // centro (média simples) para marker/heat
       let sumLat = 0, sumLng = 0;
       for (const [lat, lng] of pairs) { sumLat += lat; sumLng += lng; }
       const cLat = sumLat / pairs.length;
       const cLng = sumLng / pairs.length;
 
-      // guarda um centro (se já existe, faz média incremental simples)
       if (!centers[baseKey]) {
         centers[baseKey] = { lat: cLat, lng: cLng, display: base };
       } else {
@@ -209,7 +243,6 @@ function parseKmlLinesToIndex(kmlText) {
   }
 
   console.log('[KML] alimentadores carregados:', Object.keys(centers).length, 'linhas:', totalLines);
-
   return { centers, linesByBase };
 }
 
@@ -237,8 +270,7 @@ async function loadKmlOnce() {
 export function initMap() {
   const el = document.getElementById('mapaCeara');
   if (!el) return;
-
-  if (map) return; // evita duplicar
+  if (map) return;
 
   map = L.map('mapaCeara').setView([-4.8, -39.5], 7);
 
@@ -254,12 +286,15 @@ export function initMap() {
 }
 
 export async function updateHeatmap(data) {
+  // guarda último dataset pra trocar modo na hora
+  lastData = Array.isArray(data) ? data : [];
+
   if (!map) initMap();
   if (!map) return;
 
   ensureMapUI();
 
-  // sempre garante KML carregado (pra modo ALIMENTADOR)
+  // garante KML carregado (modo ALIMENTADOR)
   await loadKmlOnce();
 
   // limpa layers
@@ -270,17 +305,15 @@ export async function updateHeatmap(data) {
   if (markersLayer) markersLayer.clearLayers();
   if (kmlLayer) kmlLayer.clearLayers();
 
-  if (!Array.isArray(data) || data.length === 0) return;
+  if (!Array.isArray(lastData) || lastData.length === 0) return;
 
-  // escolhe modo
   const points =
     mode === 'ALIMENTADOR'
-      ? generateHeatmapByAlimentador(data, alimentadorCenters)
-      : generateHeatmapByConjunto(data);
+      ? generateHeatmapByAlimentador(lastData, alimentadorCenters)
+      : generateHeatmapByConjunto(lastData);
 
   if (!points.length) return;
 
-  // cap em 50 (quanto mais perto de 50, mais forte)
   const maxCap = 50;
   const heatPoints = points.map(p => [p.lat, p.lng, clamp(p.intensity, 0, maxCap)]);
 
@@ -289,11 +322,7 @@ export async function updateHeatmap(data) {
     blur: mode === 'ALIMENTADOR' ? 16 : 18,
     maxZoom: 12,
     max: maxCap,
-    gradient: {
-      0.0: 'rgba(255,0,0,0.10)',
-      0.5: 'rgba(255,0,0,0.45)',
-      1.0: 'rgba(255,0,0,1)'
-    }
+    gradient: getHeatGradient()
   }).addTo(map);
 
   // markers
@@ -312,12 +341,13 @@ export async function updateHeatmap(data) {
       .addTo(markersLayer);
   }
 
-  // se for alimentador: desenha as linhas do KML e pinta por intensidade
+  // linhas do KML (somente no modo alimentador)
   if (mode === 'ALIMENTADOR') {
-    // index por base (ARR01 etc)
+    // index por baseKey normalizada
     const intensityByBase = new Map();
     for (const p of points) {
-      const baseKey = normKey(p.base || p.label);
+      // tenta achar base dentro do label (ex: ARR01), senão usa label mesmo
+      const baseKey = normKey(extractAlimBase(p.label));
       intensityByBase.set(baseKey, p.intensity);
     }
 
@@ -330,9 +360,7 @@ export async function updateHeatmap(data) {
       const style = lineStyleByIntensity(intensity);
 
       for (const latlngs of lines) {
-        L.polyline(latlngs, {
-          ...style
-        })
+        L.polyline(latlngs, { ...style })
           .bindPopup(
             `<strong>${alimentadorCenters[baseKey]?.display || baseKey}</strong><br>
              Intensidade: <b>${intensity}</b>`
