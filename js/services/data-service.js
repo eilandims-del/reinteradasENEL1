@@ -157,14 +157,14 @@ export function generateHeatmapByConjunto(data) {
 
   const coordenadasConjuntos = {
     'NOVA RUSSAS': [-4.7058, -40.5659],
-    'MACAOCA': [-4.4519, -40.7262],
+    'MACAOCA': [-4.758647, -39.481451], 
     'CANINDÉ': [-4.3583, -39.3116],
     'QUIXERAMOBIM': [-5.1990, -39.2927],
     'IPU': [-4.3220, -40.7107],
     'INDEPENDÊNCIA': [-5.3960, -40.3080],
     'ARARENDA': [-4.7448, -40.8311],
     'BOA VIAGEM': [-5.1271, -39.7336],
-    'INHUPORANGA': [-4.4369, -40.8892],
+    'INHUPORANGA': [-4.097712, -39.060548], 
     'SANTA QUITÉRIA': [-4.3324, -40.1572],
     'CRATEÚS': [-5.1783, -40.6696],
     'MONSENHOR TABOSA': [-4.7923, -40.0645],
@@ -172,6 +172,7 @@ export function generateHeatmapByConjunto(data) {
     'BANABUIÚ': [-5.3054, -38.9182],
     'QUIXADÁ': [-4.9716, -39.0161]
   };
+  
 
   const coords = {};
   const displayByKey = {};
