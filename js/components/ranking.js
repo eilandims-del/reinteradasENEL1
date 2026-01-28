@@ -5,7 +5,8 @@
 
 import { generateRankingElemento } from '../services/data-service.js';
 import { openModal, fillDetailsModal } from './modal.js';
-import { formatDate, showToast, copyToClipboard, formatIncidenciaUrl } from '../utils/helpers.js';
+import { formatDate, showToast, copyToClipboard } from '../utils/helpers.js';
+import { formatIncidenciaUrl, showToast, copyToClipboard } from '../utils/helpers.js';
 
 
 let currentRankingData = [];
@@ -688,6 +689,12 @@ function getIncidenciaFromRow(row) {
     row?.['INCIDÊNCIA'] ||
     ''
   );
+}
+
+function buildSdeiceUrl(inc) {
+  const cleaned = String(inc || '').trim();
+  if (!cleaned) return null;
+  return `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${encodeURIComponent(cleaned)}`;
 }
 
 function buildSdeiceLinksText(elemento, ocorrencias) {
