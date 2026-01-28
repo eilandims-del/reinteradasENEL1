@@ -1,11 +1,12 @@
 /**
  * Componente Ranking - Exibição e gerenciamento de rankings
+ * (Corrigido: remove link curto via Firebase e adiciona clique no NOME para copiar links SDEICE)
  */
 
 import { generateRankingElemento } from '../services/data-service.js';
 import { openModal, fillDetailsModal } from './modal.js';
-import { formatDate } from '../utils/helpers.js';
-import { ShareLinkService } from '../services/firebase-service.js';
+import { formatDate, showToast, copyToClipboard } from '../utils/helpers.js';
+import { formatIncidenciaUrl, showToast, copyToClipboard } from '../utils/helpers.js';
 
 
 let currentRankingData = [];
@@ -134,6 +135,30 @@ function renderRankingList(ranking) {
           name.className = 'ranking-item-name';
           name.textContent = item.elemento;
 
+          // ✅ Clique no nome: COPIA links do SDEICE (não abre modal)
+          name.style.cursor = 'pointer';
+          name.title = 'Clique para copiar links do SDEICE (incidências)';
+          name.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+          
+            const seen = new Set();
+            const urls = [];
+          
+            for (const row of (item.ocorrencias || [])) {
+              const inc = String(getFieldValue(row, 'INCIDENCIA') || getFieldValue(row, 'INCIDÊNCIA') || '').trim();
+              if (!inc || seen.has(inc)) continue;
+              seen.add(inc);
+          
+              const url = formatIncidenciaUrl(inc);
+              if (url) urls.push(url);
+            }
+          
+            const text = [`${String(item.elemento || '').trim()} (${urls.length} incidência(s))`, ...urls].join('\n');
+          
+            const res = await copyToClipboard(text);
+            showToast(res?.success ? 'Links do SDEICE copiados!' : 'Erro ao copiar.', res?.success ? 'success' : 'error');
+          });          
+
           const count = document.createElement('span');
           count.className = 'ranking-item-count';
           count.textContent = `(${item.count} vezes)`;
@@ -249,55 +274,9 @@ function openElementDetails(elemento, ocorrencias) {
 
 /**
  * Gerar texto do ranking para copiar (WhatsApp) - mais friendly
- * - Mostra Alimentador (mais frequente)
- * - Mostra TODAS as causas (únicas, ordenadas por frequência)
- * - Separa por tipo (TRAFO / FUSÍVEL / RELIGADOR) quando filtro = TODOS
- * - Quando TODOS: se uma seção estiver vazia, adiciona OBS individual
+ * (sem link curto; mantém “Ver mais detalhes” com URL normal do site)
  */
-
-function getIncidenciasFromOcorrencias(ocorrencias) {
-  if (!Array.isArray(ocorrencias) || !ocorrencias.length) return [];
-
-  const incs = [];
-  const seen = new Set();
-
-  for (const row of ocorrencias) {
-    const inc = String(getFieldValue(row, 'INCIDENCIA') || '').trim();
-    if (!inc) continue;
-    if (seen.has(inc)) continue;
-    seen.add(inc);
-    incs.push(inc);
-  }
-  return incs;
-}
-
-function buildHubUrl({ elemento, incidencias, alimentador, causas }) {
-  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '/')}`;
-  const u = new URL('hub.html', base);
-
-  u.searchParams.set('i', incidencias.join(','));
-  if (elemento) u.searchParams.set('e', encodeURIComponent(elemento));
-  if (alimentador) u.searchParams.set('a', encodeURIComponent(alimentador));
-  if (causas) u.searchParams.set('c', encodeURIComponent(causas));
-
-  return u.toString();
-}
-
-function buildHubInline(ocorrencias, elementoNome, alimentadorStr, causasStr) {
-  const incs = getIncidenciasFromOcorrencias(ocorrencias || []);
-  if (!incs.length) return ''; // não coloca nada se não tiver incidência
-
-  const hub = buildHubUrl({
-    elemento: elementoNome,
-    incidencias: incs,
-    alimentador: alimentadorStr,
-    causas: causasStr
-  });
-
-  return ` 🔗 ${hub}`;
-}
-
-export async function generateRankingText() {
+export function generateRankingText() {
   console.log('[COPIAR] generateRankingText ✅', { currentElementoFilter, elementoSearchTerm });
 
   if (!currentRankingData.length) return '⚠️ Nenhum ranking disponível no momento.';
@@ -346,11 +325,7 @@ export async function generateRankingText() {
     return '•';
   };
 
-  // período pra salvar junto no link curto
-  const di = document.getElementById('dataInicial')?.value?.split('T')[0] || '';
-  const df = document.getElementById('dataFinal')?.value?.split('T')[0] || '';
-
-  const renderSecao = async (titulo, arr) => {
+  const renderSecao = (titulo, arr) => {
     if (!arr.length) return;
 
     const icon = getTipoEmoji(titulo);
@@ -361,7 +336,7 @@ export async function generateRankingText() {
     const sliced = arr.slice(0, MAX_ITENS_POR_SECAO);
     const restantes = arr.length - sliced.length;
 
-    for (const item of sliced) {
+    sliced.forEach((item) => {
       const total = Number(item.count) || 0;
 
       const alimentador = getMostFrequentField(item.ocorrencias || [], 'ALIMENT.');
@@ -369,32 +344,13 @@ export async function generateRankingText() {
 
       const causasStr = getAllCausesLine(item.ocorrencias || []);
 
-      // pega todas incidências do elemento (mantém repetidas, e sem "vazar link gigante")
-      const incidencias = (item.ocorrencias || [])
-        .map(o => getValueSmartRow(o, 'INCIDENCIA'))
-        .map(x => String(x || '').trim())
-        .filter(Boolean);
-
-      // cria link curto (um por item)
-      let shortUrl = '';
-      const payload = { elemento: item.elemento, incidencias, periodo: { di, df } };
-      const created = await ShareLinkService.create(payload);
-
-      if (created.success) {
-        shortUrl = `https://eilandims-del.github.io/reiteradasenel/share.html?id=${created.id}`;
-      } else {
-        // fallback (se der erro, não quebra o relatório)
-        shortUrl = '(link indisponível)';
-      }
-
-      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total} vezes)* 🔗 Incidências`);
+      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total} vezes)*`);
       linhas.push(`   ├─ 🧭 Alimentador: ${alimentadorStr}`);
-      linhas.push(`   ├─ 🧾 Causas: ${causasStr}`);
-      linhas.push(`   └─ 🔗 ${shortUrl}`);
+      linhas.push(`   └─ 🧾 Causas: ${causasStr}`);
       linhas.push('');
 
       globalIndex += 1;
-    }
+    });
 
     if (restantes > 0) {
       linhas.push(`…e mais *${restantes}* item(ns) em ${titulo} (refine no painel para ver tudo).`);
@@ -405,9 +361,9 @@ export async function generateRankingText() {
   };
 
   if (currentElementoFilter === 'TODOS') {
-    await renderSecao('TRAFO', trafos);
-    await renderSecao('FUSÍVEL', fus);
-    await renderSecao('RELIGADOR', rel);
+    renderSecao('TRAFO', trafos);
+    renderSecao('FUSÍVEL', fus);
+    renderSecao('RELIGADOR', rel);
 
     const obs = [];
     if (!trafos.length) obs.push('🔌 Não reiterou nenhum *TRAFO*');
@@ -420,19 +376,19 @@ export async function generateRankingText() {
       linhas.push('');
     }
   } else if (currentElementoFilter === 'TRAFO') {
-    await renderSecao('TRAFO', trafos);
+    renderSecao('TRAFO', trafos);
     if (!trafos.length) {
       linhas.push('ℹ️ *Observação:* 🔌 Não reiterou nenhum *TRAFO*');
       linhas.push('');
     }
   } else if (currentElementoFilter === 'FUSIVEL') {
-    await renderSecao('FUSÍVEL', fus);
+    renderSecao('FUSÍVEL', fus);
     if (!fus.length) {
       linhas.push('ℹ️ *Observação:* 💡 Não reiterou nenhum *FUSÍVEL*');
       linhas.push('');
     }
   } else if (currentElementoFilter === 'RELIGADOR') {
-    await renderSecao('RELIGADOR', rel);
+    renderSecao('RELIGADOR', rel);
     if (!rel.length) {
       linhas.push('ℹ️ *Observação:* ⚡ Não reiterou nenhum *RELIGADOR*');
       linhas.push('');
@@ -445,7 +401,6 @@ export async function generateRankingText() {
 
   return linhas.join('\n').trim();
 }
-
 
 function getFiltroLabel(filter) {
   const f = String(filter || '').toUpperCase();
@@ -561,7 +516,6 @@ function getMostFrequentField(ocorrencias, fieldName) {
 
 /**
  * Monta uma linha com TODAS as causas únicas, ordenadas por frequência.
- * Ex.: "CHUVA, PÁSSARO, DESCARGAS ATMOSFÉRICAS"
  */
 function getAllCausesLine(ocorrencias) {
   if (!Array.isArray(ocorrencias) || !ocorrencias.length) return 'Não informado';
@@ -685,7 +639,6 @@ function exportRankingElementoToExcel(rankingView) {
     return;
   }
 
-  // Ordena por ELEMENTO e DATA (opcional)
   rows.sort((a, b) => {
     const ea = a.ELEMENTO.localeCompare(b.ELEMENTO);
     if (ea !== 0) return ea;
@@ -722,4 +675,41 @@ function exportRankingElementoToExcel(rankingView) {
   const fileName = `Ranking_Elemento_${periodo}_${stamp}.xlsx`;
 
   window.XLSX.writeFile(wb, fileName);
+}
+
+/* ============================
+   SDEICE: gerar links e copiar
+   ============================ */
+
+function getIncidenciaFromRow(row) {
+  return (
+    getFieldValue(row, 'INCIDENCIA') ||
+    getFieldValue(row, 'INCIDÊNCIA') ||
+    row?.INCIDENCIA ||
+    row?.['INCIDÊNCIA'] ||
+    ''
+  );
+}
+
+function buildSdeiceUrl(inc) {
+  const cleaned = String(inc || '').trim();
+  if (!cleaned) return null;
+  return `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${encodeURIComponent(cleaned)}`;
+}
+
+function buildSdeiceLinksText(elemento, ocorrencias) {
+  const seen = new Set();
+  const urls = [];
+
+  for (const row of (ocorrencias || [])) {
+    const inc = String(getIncidenciaFromRow(row) || '').trim();
+    if (!inc || seen.has(inc)) continue;
+    seen.add(inc);
+
+    const url = buildSdeiceUrl(inc);
+    if (url) urls.push(url);
+  }
+
+  const header = `${String(elemento || '').trim()} (${urls.length} incidência(s))`;
+  return [header, ...urls].join('\n');
 }
