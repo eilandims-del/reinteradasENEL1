@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SDEICE • Hub de Incidências</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #0b1220; color: #e8eefc; }
+    header { padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); }
+    h1 { font-size: 16px; margin: 0 0 6px; font-weight: 700; }
+    .sub { opacity: .8; font-size: 13px; }
+    main { padding: 16px 18px; max-width: 980px; margin: 0 auto; }
+    .box { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 14px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    a.btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: #e8eefc; text-decoration: none;
+      font-weight: 700; min-width: 58px;
+    }
+    a.btn:hover { background: rgba(255,255,255,.10); }
+    .hint { margin-top: 10px; opacity: .75; font-size: 12px; }
+    code { background: rgba(255,255,255,.06); padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔗 SDEICE • Hub de Incidências</h1>
+    <div class="sub" id="meta">Carregando…</div>
+  </header>
+
+  <main>
+    <div class="box">
+      <div id="title" style="font-size:14px;font-weight:700;"></div>
+      <div class="row" id="links"></div>
+      <div class="hint">
+        Dica: se abrir bloqueado por rede, tente dentro do ambiente ENEL / VPN.
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function getParam(name) {
+      const u = new URL(window.location.href);
+      return u.searchParams.get(name) || '';
+    }
+
+    // i = incidências separadas por vírgula (já URL-encoded na origem)
+    const iRaw = getParam('i');
+    const elemento = getParam('e');
+    const causas = getParam('c');
+    const aliment = getParam('a');
+
+    const incidencias = iRaw
+      .split(',')
+      .map(x => (x || '').trim())
+      .filter(Boolean);
+
+    const meta = document.getElementById('meta');
+    const title = document.getElementById('title');
+    const links = document.getElementById('links');
+
+    meta.textContent = `Total de links: ${incidencias.length || 0}`;
+    title.innerHTML =
+      `${elemento ? `Elemento: <code>${decodeURIComponent(elemento)}</code>` : ''}` +
+      `${aliment ? ` • Alimentador: <code>${decodeURIComponent(aliment)}</code>` : ''}` +
+      `${causas ? ` • Causas: <code>${decodeURIComponent(causas)}</code>` : ''}`;
+
+    if (!incidencias.length) {
+      links.innerHTML = '<div style="opacity:.8;">Nenhuma incidência encontrada no link.</div>';
+    } else {
+      incidencias.forEach((inc, idx) => {
+        const url = `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${encodeURIComponent(inc)}`;
+        const a = document.createElement('a');
+        a.className = 'btn';
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = `#${idx + 1}`;
+        a.title = `Incidência: ${inc}`;
+        links.appendChild(a);
+      });
+    }
+  </script>
+</body>
+</html>

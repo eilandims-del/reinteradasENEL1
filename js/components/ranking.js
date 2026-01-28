@@ -252,6 +252,49 @@ function openElementDetails(elemento, ocorrencias) {
  * - Separa por tipo (TRAFO / FUSÍVEL / RELIGADOR) quando filtro = TODOS
  * - Quando TODOS: se uma seção estiver vazia, adiciona OBS individual
  */
+
+function getIncidenciasFromOcorrencias(ocorrencias) {
+  if (!Array.isArray(ocorrencias) || !ocorrencias.length) return [];
+
+  const incs = [];
+  const seen = new Set();
+
+  for (const row of ocorrencias) {
+    const inc = String(getFieldValue(row, 'INCIDENCIA') || '').trim();
+    if (!inc) continue;
+    if (seen.has(inc)) continue;
+    seen.add(inc);
+    incs.push(inc);
+  }
+  return incs;
+}
+
+function buildHubUrl({ elemento, incidencias, alimentador, causas }) {
+  const base = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '/')}`;
+  const u = new URL('hub.html', base);
+
+  u.searchParams.set('i', incidencias.join(','));
+  if (elemento) u.searchParams.set('e', encodeURIComponent(elemento));
+  if (alimentador) u.searchParams.set('a', encodeURIComponent(alimentador));
+  if (causas) u.searchParams.set('c', encodeURIComponent(causas));
+
+  return u.toString();
+}
+
+function buildHubInline(ocorrencias, elementoNome, alimentadorStr, causasStr) {
+  const incs = getIncidenciasFromOcorrencias(ocorrencias || []);
+  if (!incs.length) return ''; // não coloca nada se não tiver incidência
+
+  const hub = buildHubUrl({
+    elemento: elementoNome,
+    incidencias: incs,
+    alimentador: alimentadorStr,
+    causas: causasStr
+  });
+
+  return ` 🔗 ${hub}`;
+}
+
 export function generateRankingText() {
   console.log('[COPIAR] generateRankingText ✅', { currentElementoFilter, elementoSearchTerm });
 
@@ -322,9 +365,13 @@ export function generateRankingText() {
       // Todas as causas (únicas, por frequência)
       const causasStr = getAllCausesLine(item.ocorrencias || []);
 
-      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total} vezes)*`);
+      const elementoNome = sanitizeOneLine(item.elemento);
+      const hubInline = buildHubInline(item.ocorrencias || [], elementoNome, alimentadorStr, causasStr);
+      
+      linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${elementoNome}  *(${total} vezes)*${hubInline}`);
       linhas.push(`   ├─ 🧭 Alimentador: ${alimentadorStr}`);
       linhas.push(`   └─ 🧾 Causas: ${causasStr}`);
+         
       linhas.push('');
 
       globalIndex += 1;
