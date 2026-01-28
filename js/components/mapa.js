@@ -7,9 +7,10 @@ let kmlLayer;
 
 let uiMounted = false;
 let mode = 'CONJUNTO'; // 'CONJUNTO' | 'ALIMENTADOR'
-
-// cache do último dataset para re-render imediato ao trocar modo
 let lastData = [];
+
+// anti-race: só o update mais recente pode desenhar
+let renderSeq = 0;
 
 // alimentadorBaseNorm -> { lat, lng, display }
 let alimentadorCenters = {};
@@ -44,30 +45,54 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-// vermelho com alpha crescente (para linhas KML)
-function lineStyleByIntensity(intensity) {
-  const t = clamp(intensity, 0, 50) / 50;
-  const alpha = 0.15 + 0.85 * t;
-  const weight = 1.5 + 5.5 * t;
-  return {
-    color: `rgba(255, 0, 0, ${alpha.toFixed(3)})`,
-    weight,
-    opacity: 1
-  };
+/**
+ * Paleta real de heat:
+ * Azul → Verde → Amarelo → Laranja → Vermelho
+ */
+const HEAT_GRADIENT = {
+  0.00: 'rgba(0, 80, 255, 0.35)',
+  0.25: 'rgba(0, 200, 120, 0.55)',
+  0.50: 'rgba(255, 230, 0, 0.75)',
+  0.75: 'rgba(255, 140, 0, 0.90)',
+  1.00: 'rgba(255, 0, 0, 0.95)'
+};
+
+// stops para interpolar cor das LINHAS também
+const HEAT_STOPS = [
+  { t: 0.00, rgb: [0, 80, 255] },
+  { t: 0.25, rgb: [0, 200, 120] },
+  { t: 0.50, rgb: [255, 230, 0] },
+  { t: 0.75, rgb: [255, 140, 0] },
+  { t: 1.00, rgb: [255, 0, 0] }
+];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function colorFromIntensity(intensity, max, alpha = 0.95) {
+  const x = max > 0 ? clamp(intensity, 0, max) / max : 0;
+
+  let i = 0;
+  while (i < HEAT_STOPS.length - 1 && x > HEAT_STOPS[i + 1].t) i++;
+
+  const a = HEAT_STOPS[i];
+  const b = HEAT_STOPS[Math.min(i + 1, HEAT_STOPS.length - 1)];
+
+  const span = (b.t - a.t) || 1;
+  const tt = (x - a.t) / span;
+
+  const r = Math.round(lerp(a.rgb[0], b.rgb[0], tt));
+  const g = Math.round(lerp(a.rgb[1], b.rgb[1], tt));
+  const bl = Math.round(lerp(a.rgb[2], b.rgb[2], tt));
+
+  return `rgba(${r}, ${g}, ${bl}, ${alpha})`;
 }
 
-/**
- * Gradient “mapa de calor real” (tipo meteorologia):
- * Azul → Verde → Amarelo → Laranja → Vermelho
- * IMPORTANTE: as keys são 0..1
- */
-function heatGradient() {
+function lineStyleByIntensity(intensity, max) {
+  const t = max > 0 ? clamp(intensity, 0, max) / max : 0;
   return {
-    0.00: 'rgba(0, 80, 255, 0.35)',  // azul
-    0.25: 'rgba(0, 200, 120, 0.55)', // verde
-    0.50: 'rgba(255, 230, 0, 0.70)', // amarelo
-    0.75: 'rgba(255, 140, 0, 0.85)', // laranja
-    1.00: 'rgba(255, 0, 0, 0.95)'    // vermelho
+    color: colorFromIntensity(intensity, max, 0.95),
+    weight: 1.5 + 6.5 * t,
+    opacity: 1
   };
 }
 
@@ -100,10 +125,15 @@ function ensureMapUI() {
   box.innerHTML = `
     <div style="margin-bottom:8px;">Mapa:</div>
     <div style="display:flex; gap:6px;">
-      <button id="btnModeConj" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Conjunto</button>
-      <button id="btnModeAlim" style="padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;">Alimentador</button>
+      <button id="btnModeConj">Conjunto</button>
+      <button id="btnModeAlim">Alimentador</button>
     </div>
   `;
+
+  const styleBtnBase =
+    'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:700;';
+  const styleActive = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
+  const styleInactive = 'background:#fff;color:#111;border-color:#ddd;';
 
   const legend = document.createElement('div');
   legend.style.background = 'rgba(255,255,255,0.92)';
@@ -138,36 +168,26 @@ function ensureMapUI() {
   const btnConj = box.querySelector('#btnModeConj');
   const btnAlim = box.querySelector('#btnModeAlim');
 
-  const applyBtnStyle = () => {
-    const active = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
-    const inactive = 'background:#fff;color:#111;border-color:#ddd;';
-    btnConj.style.cssText = btnConj.style.cssText.replace(/background:[^;]*;|color:[^;]*;|border-color:[^;]*;/g, '');
-    btnAlim.style.cssText = btnAlim.style.cssText.replace(/background:[^;]*;|color:[^;]*;|border-color:[^;]*;/g, '');
-
-    if (mode === 'CONJUNTO') {
-      btnConj.style.cssText += active;
-      btnAlim.style.cssText += inactive;
-    } else {
-      btnAlim.style.cssText += active;
-      btnConj.style.cssText += inactive;
-    }
+  const paintButtons = () => {
+    btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
+    btnAlim.style.cssText = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive);
   };
 
   btnConj.addEventListener('click', async () => {
     if (mode === 'CONJUNTO') return;
     mode = 'CONJUNTO';
-    applyBtnStyle();
-    await updateHeatmap(lastData); // ✅ re-render imediato
+    paintButtons();
+    await updateHeatmap(lastData);
   });
 
   btnAlim.addEventListener('click', async () => {
     if (mode === 'ALIMENTADOR') return;
     mode = 'ALIMENTADOR';
-    applyBtnStyle();
-    await updateHeatmap(lastData); // ✅ re-render imediato
+    paintButtons();
+    await updateHeatmap(lastData);
   });
 
-  applyBtnStyle();
+  paintButtons();
 }
 
 /* =========================
@@ -176,12 +196,10 @@ function ensureMapUI() {
 function parseKmlLinesToIndex(kmlText) {
   const parser = new DOMParser();
   const xml = parser.parseFromString(kmlText, 'text/xml');
-
   const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
 
   const centers = {};
   const linesByBase = {};
-
   let totalLines = 0;
 
   for (const pm of placemarks) {
@@ -221,9 +239,8 @@ function parseKmlLinesToIndex(kmlText) {
       const cLat = sumLat / pairs.length;
       const cLng = sumLng / pairs.length;
 
-      if (!centers[baseKey]) {
-        centers[baseKey] = { lat: cLat, lng: cLng, display: base };
-      } else {
+      if (!centers[baseKey]) centers[baseKey] = { lat: cLat, lng: cLng, display: base };
+      else {
         centers[baseKey] = {
           lat: (centers[baseKey].lat + cLat) / 2,
           lng: (centers[baseKey].lng + cLng) / 2,
@@ -261,7 +278,6 @@ async function loadKmlOnce() {
 export function initMap() {
   const el = document.getElementById('mapaCeara');
   if (!el) return;
-
   if (map) return;
 
   map = L.map('mapaCeara').setView([-4.8, -39.5], 7);
@@ -279,39 +295,45 @@ export function initMap() {
 
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
+  const seq = ++renderSeq;
 
   if (!map) initMap();
   if (!map) return;
 
   ensureMapUI();
-  await loadKmlOnce();
 
-  if (heatLayer) {
-    map.removeLayer(heatLayer);
-    heatLayer = null;
-  }
+  await loadKmlOnce();
+  if (seq !== renderSeq) return;
+
+  // limpa layers
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
   if (markersLayer) markersLayer.clearLayers();
   if (kmlLayer) kmlLayer.clearLayers();
 
-  if (!Array.isArray(lastData) || lastData.length === 0) return;
+  if (!lastData.length) return;
 
   const points =
     mode === 'ALIMENTADOR'
       ? generateHeatmapByAlimentador(lastData, alimentadorCenters)
       : generateHeatmapByConjunto(lastData);
 
+  if (seq !== renderSeq) return;
   if (!points.length) return;
 
+  // max dinâmico (sem isso a cor “some” quando intensidade é baixa)
   const maxCap = 50;
+  const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
+  const maxHeat = clamp(maxObserved, 1, maxCap);
+
   const heatPoints = points.map(p => [p.lat, p.lng, clamp(p.intensity, 0, maxCap)]);
 
   heatLayer = L.heatLayer(heatPoints, {
     radius: mode === 'ALIMENTADOR' ? 26 : 30,
     blur: mode === 'ALIMENTADOR' ? 18 : 20,
     maxZoom: 12,
-    max: maxCap,
-    minOpacity: 0.35,         // ✅ deixa o “calor” visível mesmo com intensidade baixa
-    gradient: heatGradient()  // ✅ multi-cor
+    max: maxHeat,
+    minOpacity: 0.35,
+    gradient: HEAT_GRADIENT
   }).addTo(map);
 
   // markers
@@ -323,31 +345,27 @@ export async function updateHeatmap(data) {
       fillOpacity: 0.85,
       weight: 2
     })
-      .bindPopup(
-        `<strong>${p.label}</strong><br>
-         Reiteradas (total): <b>${p.intensity}</b>`
-      )
+      .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
       .addTo(markersLayer);
   }
 
-  // linhas KML no modo ALIMENTADOR
+  // linhas KML (modo ALIMENTADOR)
   if (mode === 'ALIMENTADOR') {
     const intensityByBase = new Map();
     for (const p of points) {
       const baseKey = normKey(p.base || p.label);
-      intensityByBase.set(baseKey, p.intensity);
+      intensityByBase.set(baseKey, Number(p.intensity) || 0);
     }
 
     let drawn = 0;
-
     for (const [baseKey, lines] of Object.entries(alimentadorLines)) {
       const intensity = intensityByBase.get(baseKey) || 0;
       if (intensity <= 0) continue;
 
-      const style = lineStyleByIntensity(intensity);
+      const style = lineStyleByIntensity(intensity, maxHeat);
 
       for (const latlngs of lines) {
-        L.polyline(latlngs, { ...style })
+        L.polyline(latlngs, style)
           .bindPopup(
             `<strong>${alimentadorCenters[baseKey]?.display || baseKey}</strong><br>
              Intensidade: <b>${intensity}</b>`
@@ -360,5 +378,6 @@ export async function updateHeatmap(data) {
     console.log('[MAP] linhas desenhadas:', drawn);
   }
 
+  if (seq !== renderSeq) return;
   map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40] });
 }
