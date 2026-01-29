@@ -45,16 +45,29 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function purgeAllHeatLayers() {
+  if (!map) return;
+
+  // Remove qualquer heat layer que tenha ficado “órfão”
+  Object.values(map._layers || {}).forEach(layer => {
+    // leaflet.heat cria layers com propriedade interna "_heat"
+    if (layer && layer._heat) {
+      try { map.removeLayer(layer); } catch (_) {}
+    }
+  });
+}
+
+
 /**
  * Paleta real de heat:
  * Azul → Verde → Amarelo → Laranja → Vermelho
  */
 const HEAT_GRADIENT = {
-  0.00: 'rgba(0, 60, 255, 0.45)',    // azul mais forte
-  0.20: 'rgba(0, 180, 120, 0.65)',   // verde
-  0.40: 'rgba(255, 230, 0, 0.85)',   // amarelo
-  0.65: 'rgba(255, 140, 0, 0.95)',   // laranja
-  1.00: 'rgba(200, 0, 0, 1.00)'      // vermelho escuro
+  0.00: 'rgba(0, 60, 255, 0.45)',
+  0.20: 'rgba(0, 180, 120, 0.65)',
+  0.40: 'rgba(255, 230, 0, 0.85)',
+  0.65: 'rgba(255, 140, 0, 0.95)',
+  1.00: 'rgba(200, 0, 0, 1.00)'
 };
 
 // stops para interpolar cor das LINHAS também
@@ -63,7 +76,7 @@ const HEAT_STOPS = [
   { t: 0.25, rgb: [0, 200, 120] },
   { t: 0.50, rgb: [255, 230, 0] },
   { t: 0.75, rgb: [255, 140, 0] },
-  { t: 1.00, rgb: [200, 0, 0] }
+  { t: 1.00, rgb: [255, 0, 0] }
 ];
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -87,69 +100,40 @@ function colorFromIntensity(intensity, max, alpha = 0.95) {
   return `rgba(${r}, ${g}, ${bl}, ${alpha})`;
 }
 
-function lineStyleByIntensity(intensity, maxHeat) {
-  const t = maxHeat > 0 ? clamp(intensity, 0, maxHeat) / maxHeat : 0;
+function lineStyleByIntensity(intensity, max) {
+  const t = max > 0 ? clamp(intensity, 0, max) / max : 0;
   return {
-    color: colorFromIntensity(intensity, maxHeat, 0.95),
+    color: colorFromIntensity(intensity, max, 0.95),
     weight: 1.5 + 6.5 * t,
     opacity: 1
   };
 }
 
-// reforço leve (não “explode” tudo), combinado com boost por zoom
+// ✅ reforço de contraste do heatmap (fica mais “quente” sem zoom) — usar só no CONJUNTO
 function boostIntensity(intensity, maxCap) {
   const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0; // 0..1
-  const y = Math.pow(x, 0.60);
+  const y = Math.pow(x, 0.55); // <1 => enfatiza valores altos
   return y * maxCap;
 }
 
-/* =========================
-   BOOST POR ZOOM (FAR/MID/NEAR)
-========================= */
-function getZoomTier(z) {
-  if (z <= 7) return 'FAR';
-  if (z <= 9) return 'MID';
-  return 'NEAR';
-}
+/**
+ * ✅ Normalização por modo:
+ * - CONJUNTO: boost (pra aparecer mais quente no zoom aberto)
+ * - ALIMENTADOR: compressão (pra NÃO deixar tudo vermelho)
+ */
+function scaleIntensityForHeat(intensity, maxCap, currentMode) {
+  const v = Number(intensity) || 0;
 
-function computeHeatParams({ zoom, mode, maxObserved }) {
-  const tier = getZoomTier(zoom);
+  if (currentMode === 'CONJUNTO') {
+    return boostIntensity(v, maxCap);
+  }
 
-  const maxCap = 50;
-
-  // quanto mais longe, mais contraste (maxHeat menor)
-  const factorByTier = tier === 'FAR' ? 0.18 : tier === 'MID' ? 0.28 : 0.40;
-  const floorByTier  = tier === 'FAR' ? 10   : tier === 'MID' ? 12   : 16;
-
-  const maxHeat = clamp(Math.round(maxObserved * factorByTier), floorByTier, maxCap);
-
-  // “pintura” por zoom
-  const radius =
-    mode === 'ALIMENTADOR'
-      ? (tier === 'FAR' ? 26 : tier === 'MID' ? 24 : 22)
-      : (tier === 'FAR' ? 52 : tier === 'MID' ? 44 : 34);
-
-  const blur =
-    mode === 'ALIMENTADOR'
-      ? (tier === 'FAR' ? 18 : tier === 'MID' ? 16 : 14)
-      : (tier === 'FAR' ? 38 : tier === 'MID' ? 34 : 22);
-
-  const minOpacity =
-    tier === 'FAR' ? 0.62 : tier === 'MID' ? 0.54 : 0.42;
-
-  const maxZoom =
-    tier === 'FAR' ? 10 : tier === 'MID' ? 11 : 12;
-
-  // marcadores (bolinhas) por zoom: mais discretos longe, um pouco mais “visíveis” perto
-  const markerFillOpacity =
-    tier === 'FAR' ? 0.28 : tier === 'MID' ? 0.32 : 0.38;
-
-  const markerRadius =
-    mode === 'ALIMENTADOR'
-      ? (tier === 'FAR' ? 5 : 5)
-      : (tier === 'FAR' ? 6 : tier === 'MID' ? 6 : 7);
-
-  return { maxHeat, maxCap, radius, blur, minOpacity, maxZoom, tier, markerFillOpacity, markerRadius };
+  // ALIMENTADOR: comprime (gamma > 1 reduz saturação)
+  // Ex.: 10/50 continua baixo (azul/verde), 35/50 vira amarelo/laranja, 50 fica vermelho.
+  const x = maxCap > 0 ? clamp(v, 0, maxCap) / maxCap : 0; // 0..1
+  const gamma = 1.6;
+  const y = Math.pow(x, gamma);
+  return y * maxCap;
 }
 
 /* =========================
@@ -204,10 +188,10 @@ function ensureMapUI() {
     <div style="margin-bottom:8px;">Intensidade (0 → 50)</div>
     <div style="height:10px;border-radius:8px;background: linear-gradient(90deg,
       rgba(0,60,255,0.55),
-      rgba(0,180,120,0.70),
+      rgba(0,180,120,0.65),
       rgba(255,230,0,0.85),
       rgba(255,140,0,0.95),
-      rgba(200,0,0,1.00)
+      rgba(200,0,0,1.0)
     );"></div>
     <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:800;">
       <span>0</span><span>50+</span>
@@ -347,15 +331,10 @@ export function initMap() {
   kmlLayer = L.layerGroup().addTo(map);
 
   ensureMapUI();
-
-  // re-render ao mudar zoom (BOOST POR ZOOM)
-  if (!map.__zoomBoostHooked) {
-    map.__zoomBoostHooked = true;
-    map.on('zoomend', () => updateHeatmap(lastData));
-  }
 }
 
 export async function updateHeatmap(data) {
+  
   lastData = Array.isArray(data) ? data : [];
   const seq = ++renderSeq;
 
@@ -363,6 +342,7 @@ export async function updateHeatmap(data) {
   if (!map) return;
 
   ensureMapUI();
+  purgeAllHeatLayers();
 
   await loadKmlOnce();
   if (seq !== renderSeq) return;
@@ -382,42 +362,48 @@ export async function updateHeatmap(data) {
   if (seq !== renderSeq) return;
   if (!points.length) return;
 
+  const maxCap = 50;
+
+  // ✅ maxHeat por modo:
+  // - CONJUNTO: “aperta” a escala pra ficar mais quente no zoom aberto
+  // - ALIMENTADOR: NÃO apertar, senão satura tudo no vermelho
   const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
 
-  const zoom = map.getZoom();
-  const {
-    maxHeat, maxCap, radius, blur, minOpacity, maxZoom, tier, markerFillOpacity, markerRadius
-  } = computeHeatParams({ zoom, mode, maxObserved });
+  const maxHeat =
+    mode === 'CONJUNTO'
+      ? clamp(Math.round(maxObserved * 0.35), 12, maxCap)
+      : maxCap;
 
+  // ✅ heatPoints por modo (CONJUNTO = boost / ALIMENTADOR = compressão)
   const heatPoints = points.map(p => [
     p.lat,
     p.lng,
-    boostIntensity(Number(p.intensity) || 0, maxCap)
+    scaleIntensityForHeat(Number(p.intensity) || 0, maxCap, mode)
   ]);
 
   heatLayer = L.heatLayer(heatPoints, {
-    radius,
-    blur,
-    maxZoom,
+    radius: mode === 'ALIMENTADOR' ? 26 : 44,
+    blur: mode === 'ALIMENTADOR' ? 18 : 34,
+    maxZoom: 10,
     max: maxHeat,
-    minOpacity,
+    minOpacity: mode === 'ALIMENTADOR' ? 0.40 : 0.55,
     gradient: HEAT_GRADIENT
   }).addTo(map);
 
-  // markers (bolinhas) mais discretas (não “matam” o heat)
+  // markers (deixa mais discreto pra enfatizar o heat)
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
-      radius: markerRadius,
-      color: 'rgba(255,255,255,0.9)',
-      fillColor: 'rgba(10,74,140,1)',
-      fillOpacity: markerFillOpacity,
+      radius: mode === 'ALIMENTADOR' ? 5 : 6,
+      color: 'rgba(255,255,255,0.85)',
+      fillColor: '#0A4A8C',
+      fillOpacity: 0.35,
       weight: 1
     })
       .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
       .addTo(markersLayer);
   }
 
-  // linhas KML (modo ALIMENTADOR) — cor baseada no maxHeat (mesma lógica do heat)
+  // linhas KML (modo ALIMENTADOR) — cor baseada em 0..50 (mesma legenda)
   if (mode === 'ALIMENTADOR') {
     const intensityByBase = new Map();
     for (const p of points) {
@@ -430,8 +416,8 @@ export async function updateHeatmap(data) {
       const intensity = intensityByBase.get(baseKey) || 0;
       if (intensity <= 0) continue;
 
-      // ✅ usa maxHeat (contraste por zoom) — NÃO maxCap
-      const style = lineStyleByIntensity(intensity, maxHeat);
+      // ✅ usa maxCap (0..50) pra casar com legenda/gradiente
+      const style = lineStyleByIntensity(intensity, maxCap);
 
       for (const latlngs of lines) {
         L.polyline(latlngs, style)
@@ -447,13 +433,6 @@ export async function updateHeatmap(data) {
     console.log('[MAP] linhas desenhadas:', drawn);
   }
 
-  // ✅ NÃO fazer fitBounds sempre (senão o zoom “volta” e quebra o boost)
-  // Faz fitBounds só quando muda o "modo" ou muda o dataset (tamanho).
-  const fitKey = `${mode}:${points.length}`;
-  if (map.__lastFitKey !== fitKey) {
-    map.__lastFitKey = fitKey;
-    map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40] });
-  }
-
-  console.log('[HEAT] tier:', tier, 'zoom:', zoom, 'maxObserved:', maxObserved, 'maxHeat:', maxHeat);
+  if (seq !== renderSeq) return;
+  map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40] });
 }
