@@ -1162,3 +1162,187 @@ body::before {
   background: linear-gradient(135deg, var(--white) 0%, var(--lighter-gray) 100%);
   box-shadow: -10px 0 14px rgba(0,0,0,.06);
 }
+/* =========================================================
+   PROFESSIONAL THEME OVERRIDES (white/gray + clean buttons)
+   Cole ESTE BLOCO no FINAL do css/styles.css
+========================================================= */
+
+:root{
+  /* Base */
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --text: #0f172a;         /* slate-900 */
+  --muted: #475569;        /* slate-600 */
+  --muted-2: #64748b;      /* slate-500 */
+  --border: #e2e8f0;       /* slate-200 */
+
+  /* Acento (profissional) */
+  --accent: #1f2937;       /* gray-800 */
+  --accent-2: #0b1220;     /* quase preto */
+  --primary-blue: #1f2937; /* reutiliza var antiga (se existir) */
+  --secondary-blue: #334155;
+
+  /* Sombras */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 10px 30px rgba(15, 23, 42, 0.10);
+
+  /* Raios */
+  --radius-lg: 14px;
+  --radius-md: 12px;
+  --radius-sm: 10px;
+}
+
+/* Fundo geral */
+html, body{
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Header mais clean */
+.header{
+  background: rgba(255,255,255,0.86) !important;
+  border-bottom: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-sm) !important;
+  backdrop-filter: blur(10px);
+}
+.header-title{ color: var(--text) !important; letter-spacing: -0.02em; }
+.header-subtitle{ color: var(--muted) !important; }
+
+/* Containers / cards */
+.container{ max-width: 1260px; }
+.card{
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.card:hover{
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+  transition: 160ms ease;
+}
+
+/* Títulos das seções (remove gradiente “vivo”) */
+.section-title{
+  background: transparent !important;
+  color: var(--text) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding-bottom: 10px !important;
+  margin-bottom: 12px !important;
+}
+
+/* Inputs (data, search etc) */
+input[type="date"], input[type="text"], input[type="search"], select{
+  background: var(--surface-2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+input:focus, select:focus{
+  outline: none !important;
+  border-color: rgba(31,41,55,0.55) !important;
+  box-shadow: 0 0 0 4px rgba(31,41,55,0.10) !important;
+}
+
+/* Botões: base */
+.btn{
+  border-radius: 12px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: 140ms ease !important;
+}
+.btn:hover{
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Botão primário: cinza escuro (profissional) */
+.btn-primary{
+  background: linear-gradient(180deg, var(--accent), var(--accent-2)) !important;
+  color: #fff !important;
+  border-color: rgba(15,23,42,0.25) !important;
+}
+.btn-primary:hover{
+  filter: brightness(1.03);
+}
+
+/* Botão secundário: “ghost” clean */
+.btn-secondary{
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+.btn-secondary:hover{
+  background: #eef2f7 !important;
+}
+
+/* Botões pequenos (ranking filtros etc) */
+.btn-sm{
+  padding: 8px 10px !important;
+  font-weight: 700 !important;
+}
+
+/* Ranking: filtros “ativos” */
+.ranking-filters .btn.active,
+#btnFiltroTodos.active,
+#btnFiltroTrafo.active,
+#btnFiltroFusivel.active,
+#btnFiltroReligador.active{
+  background: #0f172a !important;
+  color: #fff !important;
+  border-color: rgba(15,23,42,0.45) !important;
+}
+
+/* Lista do ranking fica mais clean */
+.ranking-list, .ranking-container{
+  background: transparent !important;
+}
+.ranking-item{
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  background: var(--surface) !important;
+}
+.ranking-item:hover{
+  background: #f8fafc !important;
+}
+
+/* Ajuste de “chips/labels” se tiver */
+.badge, .tag{
+  border: 1px solid var(--border) !important;
+  background: #f8fafc !important;
+  color: var(--muted) !important;
+  border-radius: 999px !important;
+}
+
+/* Modais mais premium */
+.modal-content{
+  border-radius: 16px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Scrollbar (opcional, fica mais profissional) */
+*::-webkit-scrollbar{ width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb{
+  background: #cbd5e1;
+  border-radius: 999px;
+  border: 2px solid #f1f5f9;
+}
+*::-webkit-scrollbar-track{ background: #f1f5f9; }
+
+/* Leaflet popups (deixa clean) */
+.leaflet-popup-content-wrapper{
+  border-radius: 14px !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+.leaflet-popup-content{
+  color: var(--text) !important;
+}
