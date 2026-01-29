@@ -50,12 +50,13 @@ function clamp(n, min, max) {
  * Azul → Verde → Amarelo → Laranja → Vermelho
  */
 const HEAT_GRADIENT = {
-  0.00: 'rgba(0, 80, 255, 0.35)',
-  0.25: 'rgba(0, 200, 120, 0.55)',
-  0.50: 'rgba(255, 230, 0, 0.75)',
-  0.75: 'rgba(255, 140, 0, 0.90)',
-  1.00: 'rgba(255, 0, 0, 0.95)'
+  0.00: 'rgba(0, 60, 255, 0.45)',    // azul mais forte
+  0.20: 'rgba(0, 180, 120, 0.65)',   // verde
+  0.40: 'rgba(255, 230, 0, 0.85)',   // amarelo
+  0.65: 'rgba(255, 140, 0, 0.95)',   // laranja
+  1.00: 'rgba(200, 0, 0, 1.00)'      // vermelho escuro (🔥)
 };
+
 
 // stops para interpolar cor das LINHAS também
 const HEAT_STOPS = [
@@ -331,7 +332,6 @@ export async function updateHeatmap(data) {
   const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
   const maxHeat = clamp(maxObserved, 1, maxCap);
 
-  // ✅ aplica boost p/ deixar o heat bem mais forte no zoom atual
   const heatPoints = points.map(p => [
     p.lat,
     p.lng,
@@ -339,24 +339,21 @@ export async function updateHeatmap(data) {
   ]);
 
   heatLayer = L.heatLayer(heatPoints, {
-    // ✅ no CONJUNTO: maior radius = mais “mancha” visível sem zoom
-    radius: mode === 'ALIMENTADOR' ? 26 : 42,
-    // ✅ menos blur = mais contraste
-    blur: mode === 'ALIMENTADOR' ? 18 : 22,
-    maxZoom: 12,
-    // ✅ mantém escala coerente com a legenda 0..50
-    max: maxCap,
-    minOpacity: 0.40,
+    radius: mode === 'ALIMENTADOR' ? 30 : 38, // espalha mais o calor
+    blur: mode === 'ALIMENTADOR' ? 22 : 28,   // transição mais suave
+    maxZoom: 11,
+    max: maxHeat,
+    minOpacity: 0.45,                         // nunca muito claro
     gradient: HEAT_GRADIENT
   }).addTo(map);
+  
 
-  // ✅ markers mais discretos (não roubam a atenção do heat)
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
-      radius: mode === 'ALIMENTADOR' ? 4 : 4,
-      color: 'rgba(255,255,255,0.45)',
-      fillColor: 'rgba(10,74,140,0.25)',
-      fillOpacity: 0.25,
+      radius: mode === 'ALIMENTADOR' ? 5 : 6,
+      color: '#ffffff',
+      fillColor: '#0A4A8C',
+      fillOpacity: 0.45,   // 🔑 muito mais leve
       weight: 1
     })
       .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
