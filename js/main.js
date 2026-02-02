@@ -4,9 +4,9 @@
 
 import { DataService } from './services/firebase-service.js';
 import { getAllColumns, getOcorrenciasByElemento } from './services/data-service.js';
-import { updateRanking, generateRankingText, setElementoFilter, setElementoSearch } from './components/ranking.js';
+import { updateRanking, generateRankingText, setElementoFilter, setElementoSearch, getRankingViewRows } from './components/ranking.js';
 import { updateCharts } from './components/charts.js';
-import { updateHeatmap, initMap } from './components/mapa.js'; 
+import { updateHeatmap, initMap } from './components/mapa.js';
 import { openModal, closeModal, initModalEvents, fillDetailsModal, exportDetailsToExcel } from './components/modal.js';
 import { copyToClipboard, showToast, debounce } from './utils/helpers.js';
 
@@ -66,18 +66,56 @@ function initEventListeners() {
   const btnTodos = document.getElementById('btnFiltroTodos');
   const btnTrafo = document.getElementById('btnFiltroTrafo');
   const btnFusivel = document.getElementById('btnFiltroFusivel');
-  const btnOutros = document.getElementById('btnFiltroReligador');
+  const btnOutros = document.getElementById('btnFiltroReligador'); // RELIGADOR
 
   const setActive = (activeBtn) => {
     [btnTodos, btnTrafo, btnFusivel, btnOutros].forEach(b => b?.classList.remove('active'));
     activeBtn?.classList.add('active');
   };
 
-  btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); });
-  btnTrafo?.addEventListener('click', () => { setElementoFilter('TRAFO'); setActive(btnTrafo); });
-  btnFusivel?.addEventListener('click', () => { setElementoFilter('FUSIVEL'); setActive(btnFusivel); });
-  // BUG FIX: btnReligador não existe; é btnOutros
-  btnOutros?.addEventListener('click', () => { setElementoFilter('RELIGADOR'); setActive(btnOutros); });
+  btnTodos?.addEventListener('click', () => {
+    setElementoFilter('TODOS');
+    setActive(btnTodos);
+
+    if (!currentData.length) return;
+
+    const rows = getRankingViewRows();
+    updateCharts(rows);
+    updateHeatmap(rows);
+  });
+
+  btnTrafo?.addEventListener('click', () => {
+    setElementoFilter('TRAFO');
+    setActive(btnTrafo);
+
+    if (!currentData.length) return;
+
+    const rows = getRankingViewRows();
+    updateCharts(rows);
+    updateHeatmap(rows);
+  });
+
+  btnFusivel?.addEventListener('click', () => {
+    setElementoFilter('FUSIVEL');
+    setActive(btnFusivel);
+
+    if (!currentData.length) return;
+
+    const rows = getRankingViewRows();
+    updateCharts(rows);
+    updateHeatmap(rows);
+  });
+
+  btnOutros?.addEventListener('click', () => {
+    setElementoFilter('RELIGADOR');
+    setActive(btnOutros);
+
+    if (!currentData.length) return;
+
+    const rows = getRankingViewRows();
+    updateCharts(rows);
+    updateHeatmap(rows);
+  });
 
   // estado inicial visual
   setElementoFilter('TODOS');
@@ -95,12 +133,25 @@ function initEventListeners() {
 
     searchDebounce = setTimeout(() => {
       setElementoSearch(value);
+
+      if (!currentData.length) return;
+
+      const rows = getRankingViewRows();
+      updateCharts(rows);
+      updateHeatmap(rows);
     }, 180);
   });
 
   btnClearSearch?.addEventListener('click', () => {
     if (searchElemento) searchElemento.value = '';
     setElementoSearch('');
+
+    if (!currentData.length) return;
+
+    const rows = getRankingViewRows();
+    updateCharts(rows);
+    updateHeatmap(rows);
+
     searchElemento?.focus();
   });
 }
@@ -113,12 +164,15 @@ function renderAll() {
 
   console.log(`[RENDER] Renderizando ${currentData.length} registros...`);
 
-  requestAnimationFrame(() => updateRanking(currentData));
-  requestAnimationFrame(() => updateCharts(currentData));
-  requestAnimationFrame(() => updateHeatmap(currentData));
+  // 1) Ranking elemento (define currentRankingData internamente)
+  updateRanking(currentData);
 
+  // 2) Tudo baseado na visão do Ranking Elemento (filtro + busca)
+  const rowsFromRankingView = getRankingViewRows();
+  updateCharts(rowsFromRankingView);
+  updateHeatmap(rowsFromRankingView);
 
-  console.log('[RENDER] Renderização iniciada (assíncrona)');
+  console.log('[RENDER] Renderização iniciada');
 }
 
 /**

@@ -13,6 +13,28 @@ let elementoSearchTerm = ''; // texto de busca (normalizado)
 let currentRankingCausaData = [];
 let currentRankingAlimentadorData = [];
 
+/* ============================
+   ✅ NOVO: base “real” do ranking (visão atual)
+   - retorna as ocorrências que estão por trás do ranking exibido (após filtro + busca)
+   ============================ */
+function getOcorrenciasFromRankingView(rankingView) {
+  const rows = [];
+  for (const item of (rankingView || [])) {
+    const ocorrs = Array.isArray(item?.ocorrencias) ? item.ocorrencias : [];
+    rows.push(...ocorrs);
+  }
+  return rows;
+}
+
+/**
+ * ✅ EXPORT: use no main.js para atualizar os cards (charts)
+ * com base no Ranking Elemento atual (filtro + busca)
+ */
+export function getRankingViewRows() {
+  const view = getFilteredRanking(currentRankingData || []);
+  return getOcorrenciasFromRankingView(view);
+}
+
 export function renderRankingCausa(data){
   const ranking = generateRankingByField(data, 'CAUSA');
   currentRankingCausaData = ranking;
@@ -247,10 +269,6 @@ function openElementDetails(elemento, ocorrencias) {
 
 /**
  * Gerar texto do ranking para copiar (WhatsApp) - mais friendly
- * - Mostra Alimentador (mais frequente)
- * - Mostra TODAS as causas (únicas, ordenadas por frequência)
- * - Separa por tipo (TRAFO / FUSÍVEL / RELIGADOR) quando filtro = TODOS
- * - Quando TODOS: se uma seção estiver vazia, adiciona OBS individual
  */
 export function generateRankingText() {
   console.log('[COPIAR] generateRankingText ✅', { currentElementoFilter, elementoSearchTerm });
@@ -415,13 +433,18 @@ function sanitizeOneLine(v) {
 }
 
 /**
- * Atualizar ranking com novos dados
+ * ✅ Atualizar ranking com novos dados
+ * IMPORTANTE:
+ * - NÃO chama charts aqui
+ * - charts será atualizado pelo main.js usando getRankingViewRows()
  */
 export function updateRanking(data) {
   renderRankingElemento(data);
-  renderRankingCausa(data);
-  renderRankingAlimentador(data);
 }
+
+/* ============================
+   Helpers (ranking genérico)
+   ============================ */
 
 function normalizeKey(k) {
   return String(k || '')
@@ -495,7 +518,6 @@ function getMostFrequentField(ocorrencias, fieldName) {
 
 /**
  * Monta uma linha com TODAS as causas únicas, ordenadas por frequência.
- * Ex.: "CHUVA, PÁSSARO, DESCARGAS ATMOSFÉRICAS"
  */
 function getAllCausesLine(ocorrencias) {
   if (!Array.isArray(ocorrencias) || !ocorrencias.length) return 'Não informado';
