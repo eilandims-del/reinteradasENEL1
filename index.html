@@ -45,11 +45,7 @@ FILE: index.html
     <div class="header-content">
       <!-- ESQUERDA: LOGO + TEXTOS -->
       <div class="header-left">
-        <img
-          src="assets/enel1.png"
-          alt="ENEL Brasil"
-          class="header-logo"
-        />
+        <img src="assets/enel1.png" alt="ENEL Brasil" class="header-logo" />
 
         <div class="header-text">
           <h1 class="header-title">Reiteradas - ENEL</h1>
@@ -137,7 +133,6 @@ FILE: index.html
             </h2>
 
             <div class="ranking-controls">
-              <!-- filtros -->
               <div class="ranking-filters">
                 <button id="btnFiltroTodos" class="btn btn-secondary btn-sm">TODOS</button>
                 <button id="btnFiltroTrafo" class="btn btn-secondary btn-sm">TRAFO</button>
@@ -145,18 +140,15 @@ FILE: index.html
                 <button id="btnFiltroReligador" class="btn btn-secondary btn-sm">RELIGADOR</button>
               </div>
 
-              <!-- busca -->
               <div class="ranking-search">
                 <input id="searchElemento" type="text" placeholder="Pesquisar ELEMENTO..." />
                 <button id="btnClearSearchElemento" class="btn btn-secondary btn-sm" title="Limpar">×</button>
               </div>
 
-              <!-- total -->
               <div id="rankingElementoTotal" class="btn btn-secondary btn-sm" style="cursor: default;">
                 Reiteradas: 0
               </div>
 
-              <!-- copiar -->
               <button id="copiarRankingElemento" class="btn btn-whatsapp btn-sm" title="Copiar ranking ELEMENTO">
                 <i class="fab fa-whatsapp"></i> COPIAR
               </button>
@@ -206,10 +198,7 @@ FILE: index.html
           Mapa de Calor – Reiterações por Conjunto
         </h2>
 
-        <div
-          id="mapaCeara"
-          style="width: 100%; height: 420px; border-radius: 14px;"
-        ></div>
+        <div id="mapaCeara" style="width: 100%; height: 420px; border-radius: 14px;"></div>
       </section>
 
     </div>
@@ -306,16 +295,17 @@ FILE: index.html
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- KML / KMZ (ANTES DO MAPA) -->
+  <!-- ✅ Firebase (COMPAT GLOBAL) - NECESSÁRIO pro firebase-config.js que usa "firebase" -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <!-- KML / KMZ (ANTES DO MAPA / MAIN) -->
   <script src="https://unpkg.com/@tmcw/togeojson@5.6.2/dist/togeojson.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <!-- Firebase setup (recomendado manter explícito) -->
-  <script type="module" src="js/firebase-config.js"></script>
-
-  <!-- App -->
+  <!-- ✅ App -->
   <script type="module" src="js/main.js"></script>
-
 
   <!-- Ano automático -->
   <script>
