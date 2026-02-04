@@ -1346,3 +1346,28 @@ input:focus, select:focus{
 .leaflet-popup-content{
   color: var(--text) !important;
 }
+/* =========================
+   FIX HEATMAP “PRETO” (Leaflet)
+   Cole no FINAL do css/styles.css
+========================= */
+
+#mapaCeara,
+#mapaCeara *{
+  filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
+#mapaCeara .leaflet-tile,
+#mapaCeara .leaflet-layer,
+#mapaCeara canvas{
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}
+
+/* garante que o canvas do heat não fique escuro */
+#mapaCeara .leaflet-heatmap-layer{
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+}

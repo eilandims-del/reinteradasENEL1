@@ -16,6 +16,9 @@ let alimentadorCenters = {};
 // alimentadorBaseNorm -> array de linhas (cada linha = [[lat,lng],...])
 let alimentadorLines = {};
 
+// lock para não carregar KML duas vezes em paralelo
+let kmlLoadPromise = null;
+
 // ====== REGIONAIS (KML/KMZ) ======
 const REGION_FILES = {
   'TODOS': null,
@@ -72,53 +75,15 @@ function purgeAllHeatLayers() {
 }
 
 /* =========================
-   Heat gradient / styles
+   Heat gradient (cores vivas)
 ========================= */
 const HEAT_GRADIENT = {
-  0.00: 'rgba(0, 60, 255, 0.45)',
-  0.20: 'rgba(0, 180, 120, 0.65)',
-  0.40: 'rgba(255, 230, 0, 0.85)',
-  0.65: 'rgba(255, 140, 0, 0.95)',
-  1.00: 'rgba(200, 0, 0, 1.00)'
+  0.00: '#1b4cff',   // azul
+  0.25: '#00c46a',   // verde
+  0.50: '#ffe600',   // amarelo
+  0.75: '#ff8a00',   // laranja
+  1.00: '#e60000'    // vermelho
 };
-
-const HEAT_STOPS = [
-  { t: 0.00, rgb: [0, 80, 255] },
-  { t: 0.25, rgb: [0, 200, 120] },
-  { t: 0.50, rgb: [255, 230, 0] },
-  { t: 0.75, rgb: [255, 140, 0] },
-  { t: 1.00, rgb: [255, 0, 0] }
-];
-
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-function colorFromIntensity(intensity, max, alpha = 0.95) {
-  const x = max > 0 ? clamp(intensity, 0, max) / max : 0;
-
-  let i = 0;
-  while (i < HEAT_STOPS.length - 1 && x > HEAT_STOPS[i + 1].t) i++;
-
-  const a = HEAT_STOPS[i];
-  const b = HEAT_STOPS[Math.min(i + 1, HEAT_STOPS.length - 1)];
-
-  const span = (b.t - a.t) || 1;
-  const tt = (x - a.t) / span;
-
-  const r = Math.round(lerp(a.rgb[0], b.rgb[0], tt));
-  const g = Math.round(lerp(a.rgb[1], b.rgb[1], tt));
-  const bl = Math.round(lerp(a.rgb[2], b.rgb[2], tt));
-
-  return `rgba(${r}, ${g}, ${bl}, ${alpha})`;
-}
-
-function lineStyleByIntensity(intensity, max) {
-  const t = max > 0 ? clamp(intensity, 0, max) / max : 0;
-  return {
-    color: colorFromIntensity(intensity, max, 0.95),
-    weight: 1.5 + 6.5 * t,
-    opacity: 1
-  };
-}
 
 function boostIntensity(intensity, maxCap) {
   const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0;
@@ -130,15 +95,52 @@ function scaleIntensityForHeat(intensity, maxCap, currentMode) {
   const v = Number(intensity) || 0;
   if (currentMode === 'CONJUNTO') return boostIntensity(v, maxCap);
 
+  // ALIMENTADOR mais “seletivo”
   const x = maxCap > 0 ? clamp(v, 0, maxCap) / maxCap : 0;
   const gamma = 1.6;
   const y = Math.pow(x, gamma);
   return y * maxCap;
 }
 
+function lineStyleByIntensity(intensity, max) {
+  const t = max > 0 ? clamp(intensity, 0, max) / max : 0;
+  return {
+    color: t > 0.66 ? '#e60000' : t > 0.33 ? '#ff8a00' : '#00c46a',
+    weight: 1.5 + 6.5 * t,
+    opacity: 0.95
+  };
+}
+
 /* =========================
    REGION FILTER (GeoJSON point in polygon)
+   ✅ Só filtra se existir Polygon/MultiPolygon
 ========================= */
+function cacheHas(key) {
+  return Object.prototype.hasOwnProperty.call(regionGeoJSONCache, key);
+}
+
+function extractFeatures(geojson) {
+  if (!geojson) return [];
+  if (geojson.type === 'FeatureCollection') return geojson.features || [];
+  if (geojson.type === 'Feature') return [geojson];
+  return [];
+}
+
+function geojsonHasPolygon(geojson) {
+  const features = extractFeatures(geojson);
+  for (const f of features) {
+    const g = f?.geometry;
+    if (!g) continue;
+    if (g.type === 'Polygon' || g.type === 'MultiPolygon') return true;
+    if (g.type === 'GeometryCollection') {
+      for (const gg of (g.geometries || [])) {
+        if (gg.type === 'Polygon' || gg.type === 'MultiPolygon') return true;
+      }
+    }
+  }
+  return false;
+}
+
 function pointInRing(point, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -165,11 +167,12 @@ function pointInPolygon(point, polygonCoords) {
 
 function pointInGeoJSON(lat, lng, geojson) {
   if (!geojson) return true;
-  const point = [lng, lat];
 
-  const features = geojson.type === 'FeatureCollection'
-    ? geojson.features
-    : (geojson.type === 'Feature' ? [geojson] : []);
+  // ✅ Se não tem Polygon/MultiPolygon, não filtra
+  if (!geojsonHasPolygon(geojson)) return true;
+
+  const point = [lng, lat];
+  const features = extractFeatures(geojson);
 
   for (const f of features) {
     const g = f.geometry;
@@ -180,6 +183,16 @@ function pointInGeoJSON(lat, lng, geojson) {
     } else if (g.type === 'MultiPolygon') {
       for (const poly of g.coordinates) {
         if (pointInPolygon(point, poly)) return true;
+      }
+    } else if (g.type === 'GeometryCollection') {
+      for (const gg of (g.geometries || [])) {
+        if (gg.type === 'Polygon') {
+          if (pointInPolygon(point, gg.coordinates)) return true;
+        } else if (gg.type === 'MultiPolygon') {
+          for (const poly of gg.coordinates) {
+            if (pointInPolygon(point, poly)) return true;
+          }
+        }
       }
     }
   }
@@ -254,33 +267,37 @@ function parseKmlLinesToIndex(kmlText) {
 
 async function loadAlimentadorKmlOnce() {
   if (Object.keys(alimentadorCenters).length > 0) return;
+  if (kmlLoadPromise) return kmlLoadPromise;
 
-  try {
-    const res = await fetch(KML_PATH_ALIMENTADOR, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
+  kmlLoadPromise = (async () => {
+    try {
+      const res = await fetch(KML_PATH_ALIMENTADOR, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
 
-    const { centers, linesByBase } = parseKmlLinesToIndex(text);
-    alimentadorCenters = centers;
-    alimentadorLines = linesByBase;
-  } catch (e) {
-    console.warn('[KML] Falha ao carregar KML alimentadores:', e);
-    alimentadorCenters = {};
-    alimentadorLines = {};
-  }
+      const { centers, linesByBase } = parseKmlLinesToIndex(text);
+      alimentadorCenters = centers;
+      alimentadorLines = linesByBase;
+    } catch (e) {
+      console.warn('[KML] Falha ao carregar KML alimentadores:', e);
+      alimentadorCenters = {};
+      alimentadorLines = {};
+    } finally {
+      // libera o lock (mas mantém os dados carregados)
+      kmlLoadPromise = null;
+    }
+  })();
+
+  return kmlLoadPromise;
 }
 
 /* =========================
    REGION LOADER (KML / KMZ -> GeoJSON)
 ========================= */
-function cacheHas(key) {
-  return Object.prototype.hasOwnProperty.call(regionGeoJSONCache, key);
-}
-
 async function loadRegionGeoJSON(regionKey) {
   if (regionKey === 'TODOS') return null;
 
-  // ✅ cache correto (inclusive quando o valor cacheado é null)
+  // ✅ cache correto (inclusive quando cacheado é null)
   if (cacheHas(regionKey)) return regionGeoJSONCache[regionKey];
 
   const cfg = REGION_FILES[regionKey];
@@ -344,11 +361,11 @@ function drawRegionBoundary(geojson, label) {
 
   regionLayer = L.geoJSON(geojson, {
     style: {
-      color: '#111',
+      color: '#0f172a',
       weight: 2,
-      opacity: 0.9,
-      fillColor: '#111',
-      fillOpacity: 0.05
+      opacity: 0.85,
+      fillColor: '#0f172a',
+      fillOpacity: 0.03
     }
   }).addTo(map);
 
@@ -356,7 +373,7 @@ function drawRegionBoundary(geojson, label) {
 }
 
 /* =========================
-   UI (Somente Modo + Label regional)
+   UI
 ========================= */
 function ensureMapUI() {
   if (uiMounted) return;
@@ -399,31 +416,7 @@ function ensureMapUI() {
   const styleActive = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
   const styleInactive = 'background:#fff;color:#111;border-color:#ddd;';
 
-  const legend = document.createElement('div');
-  legend.style.background = 'rgba(255,255,255,0.92)';
-  legend.style.border = '1px solid rgba(0,0,0,0.12)';
-  legend.style.borderRadius = '10px';
-  legend.style.padding = '10px';
-  legend.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
-  legend.style.fontFamily = 'Inter, system-ui, Arial';
-  legend.style.fontSize = '12px';
-  legend.style.fontWeight = '700';
-  legend.innerHTML = `
-    <div style="margin-bottom:8px;">Intensidade (0 → 50)</div>
-    <div style="height:10px;border-radius:8px;background: linear-gradient(90deg,
-      rgba(0,60,255,0.55),
-      rgba(0,180,120,0.65),
-      rgba(255,230,0,0.85),
-      rgba(255,140,0,0.95),
-      rgba(200,0,0,1.0)
-    );"></div>
-    <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:900;">
-      <span>0</span><span>50+</span>
-    </div>
-  `;
-
   wrap.appendChild(box);
-  wrap.appendChild(legend);
   container.appendChild(wrap);
 
   const btnConj = box.querySelector('#btnModeConj');
@@ -480,8 +473,7 @@ export function initMap() {
 }
 
 /**
- * ✅ Home controla a regional do mapa
- * (NÃO faz render sozinho pra evitar duplicidade)
+ * Home controla a regional do mapa
  */
 export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
@@ -498,8 +490,11 @@ export async function updateHeatmap(data) {
   ensureMapUI();
   purgeAllHeatLayers();
 
-  await loadAlimentadorKmlOnce();
-  if (seq !== renderSeq) return;
+  // ✅ Só carrega KML de alimentadores quando estiver em ALIMENTADOR
+  if (mode === 'ALIMENTADOR') {
+    await loadAlimentadorKmlOnce();
+    if (seq !== renderSeq) return;
+  }
 
   // limpar layers
   if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
@@ -525,11 +520,12 @@ export async function updateHeatmap(data) {
   if (seq !== renderSeq) return;
   if (!points.length) return;
 
-  // aplicar filtro por regional (se tiver geojson válido)
-  if (regionGeo) {
+  // ✅ aplicar filtro por regional só se tiver Polygon
+  if (regionGeo && geojsonHasPolygon(regionGeo)) {
     points = points.filter(p => pointInGeoJSON(p.lat, p.lng, regionGeo));
     if (!points.length) {
-      console.warn('[REGION] Sem pontos dentro da regional selecionada:', currentRegion);
+      // Sem warning “assustador”: apenas não renderiza pontos
+      console.info('[REGION] 0 pontos dentro do polígono da regional:', currentRegion);
       return;
     }
   }
@@ -553,11 +549,11 @@ export async function updateHeatmap(data) {
     blur: mode === 'ALIMENTADOR' ? 18 : 34,
     maxZoom: 10,
     max: maxHeat,
-    minOpacity: mode === 'ALIMENTADOR' ? 0.40 : 0.55,
+    minOpacity: 0.55, // ✅ cores mais visíveis
     gradient: HEAT_GRADIENT
   }).addTo(map);
 
-  // markers
+  // markers (pontos)
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
       radius: mode === 'ALIMENTADOR' ? 5 : 6,
@@ -570,7 +566,7 @@ export async function updateHeatmap(data) {
       .addTo(markersLayer);
   }
 
-  // linhas KML (modo ALIMENTADOR)
+  // ✅ linhas KML SÓ no modo ALIMENTADOR
   if (mode === 'ALIMENTADOR') {
     const intensityByBase = new Map();
     for (const p of points) {
@@ -586,7 +582,8 @@ export async function updateHeatmap(data) {
       const style = lineStyleByIntensity(intensity, maxCap);
 
       for (const latlngs of lines) {
-        if (regionGeo) {
+        // se tiver polígono válido, ao menos parte dentro
+        if (regionGeo && geojsonHasPolygon(regionGeo)) {
           const anyInside = latlngs.some(([lat, lng]) => pointInGeoJSON(lat, lng, regionGeo));
           if (!anyInside) continue;
         }
@@ -606,7 +603,7 @@ export async function updateHeatmap(data) {
 
   if (seq !== renderSeq) return;
 
-  // zoom para pontos (e respeita contorno quando existir)
+  // zoom para pontos (ou para bounds da regional se existir)
   const boundsPts = L.latLngBounds(points.map(p => [p.lat, p.lng]));
   if (regionLayer) {
     try {
