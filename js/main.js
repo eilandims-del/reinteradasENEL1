@@ -104,40 +104,49 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFilters);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
-  // ✅ Regional (Home)
-  document.getElementById('btnRegionalAtlantico')?.addEventListener('click', async () => {
-    setRegionalUI('ATLANTICO');
+// ✅ Regional (Home)
+document.getElementById('btnRegionalAtlantico')?.addEventListener('click', async () => {
+  setRegionalUI('ATLANTICO');
 
-    // mapa muda o recorte/borda
-    setMapRegional('ATLANTICO');
-    await updateHeatmap([]); // desenha só a borda (sem pontos)
+  // ✅ zera dados/visuais primeiro
+  currentData = [];
+  renderEmptyState();
 
-    currentData = [];
-    renderEmptyState();
-    showToast('Regional selecionada: ATLANTICO. Selecione o período e clique em Aplicar.', 'success');
-  });
+  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
+  setMapRegional('ATLANTICO');
+  await updateHeatmap([]);
 
-  document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {
-    setRegionalUI('NORTE');
+  showToast('Regional selecionada: ATLANTICO. Selecione o período e clique em Aplicar.', 'success');
+});
 
-    setMapRegional('NORTE');
-    await updateHeatmap([]);
+document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {
+  setRegionalUI('NORTE');
 
-    currentData = [];
-    renderEmptyState();
-    showToast('Regional selecionada: NORTE. Selecione o período e clique em Aplicar.', 'success');
-  });
+  // ✅ zera dados/visuais primeiro
+  currentData = [];
+  renderEmptyState();
 
-  document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', async () => {
-    setRegionalUI('CENTRO NORTE');
+  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
+  setMapRegional('NORTE');
+  await updateHeatmap([]);
 
-    setMapRegional('CENTRO NORTE');
-    await updateHeatmap([]);
+  showToast('Regional selecionada: NORTE. Selecione o período e clique em Aplicar.', 'success');
+});
 
-    currentData = [];
-    renderEmptyState();
-    showToast('Regional selecionada: CENTRO NORTE. Selecione o período e clique em Aplicar.', 'success');
-  });
+document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', async () => {
+  setRegionalUI('CENTRO NORTE');
+
+  // ✅ zera dados/visuais primeiro
+  currentData = [];
+  renderEmptyState();
+
+  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
+  setMapRegional('CENTRO NORTE');
+  await updateHeatmap([]);
+
+  showToast('Regional selecionada: CENTRO NORTE. Selecione o período e clique em Aplicar.', 'success');
+});
+
 
   // Copiar ranking (ELEMENTO)
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
