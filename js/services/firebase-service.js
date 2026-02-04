@@ -4,837 +4,372 @@
 
 import { auth, db } from '../firebase-config.js';
 
-/**
- * Serviço de Autenticação
- */
-export class AuthService {
-    /**
-     * Fazer login com email e senha
-     */
-    static async login(email, senha) {
-        try {
-            const userCredential = await auth.signInWithEmailAndPassword(email, senha);
-            return {
-                success: true,
-                user: userCredential.user
-            };
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    /**
-     * Fazer logout
-     */
-    static async logout() {
-        try {
-            await auth.signOut();
-            return { success: true };
-        } catch (error) {
-            return {
-                success: false,
-                error: error.message
-            };
-        }
-    }
-
-    /**
-     * Verificar se usuário está autenticado
-     */
-    static getCurrentUser() {
-        return auth.currentUser;
-    }
-
-    /**
-     * Observar mudanças no estado de autenticação
-     */
-    static onAuthStateChanged(callback) {
-        return auth.onAuthStateChanged(callback);
-    }
+/* =========================
+   Helpers Firebase compat
+========================= */
+function getFieldValueServerTimestamp() {
+  const fv = window?.firebase?.firestore?.FieldValue;
+  if (!fv?.serverTimestamp) {
+    throw new Error(
+      'Firebase compat FieldValue não encontrado. Verifique se firebase-firestore-compat.js está carregado antes dos seus scripts.'
+    );
+  }
+  return fv.serverTimestamp();
 }
 
-/**
- * Serviço de Dados - Firestore
- */
+/* =========================
+   Serviço de Autenticação
+========================= */
+export class AuthService {
+  static async login(email, senha) {
+    try {
+      const userCredential = await auth.signInWithEmailAndPassword(email, senha);
+      return { success: true, user: userCredential.user };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  static async logout() {
+    try {
+      await auth.signOut();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  static getCurrentUser() {
+    return auth.currentUser;
+  }
+
+  static onAuthStateChanged(callback) {
+    return auth.onAuthStateChanged(callback);
+  }
+}
+
+/* =========================
+   Serviço de Dados - Firestore
+========================= */
 export class DataService {
-    static COLLECTION_NAME = 'reinteradas';
-    static UPLOADS_COLLECTION = 'uploads';
+  static COLLECTION_NAME = 'reinteradas';
+  static UPLOADS_COLLECTION = 'uploads';
 
-    /**
-     * Salvar dados processados no Firestore
-     * CORRIGIDO: Implementa batching seguro, throttling, retry com backoff e idempotência
-     */
-    static async saveData(data, metadata = {}, progressCallback = null) {
-        try {
-            const timestamp = firebase.firestore.FieldValue.serverTimestamp();
-            const uploadId = metadata.uploadId;
-            
-            if (!uploadId) {
-                throw new Error('uploadId é obrigatório para garantir idempotência');
-            }
+  /* =========================
+     Regionais suportadas
+  ========================= */
+  static REGIONAIS = {
+    ATLANTICO: 'ATLANTICO',
+    NORTE: 'NORTE',
+    CENTRO_NORTE: 'CENTRO NORTE'
+  };
 
-            // Configurações de batching seguro (evitar quota exceeded)
-            // OTIMIZADO para volumes grandes (10k+): batch menor + throttling maior
-            const BATCH_SIZE = 200; // Reduzido de 250 para 200 (margem maior de segurança)
-            const THROTTLE_MS = 1000; // Aumentado de 500ms para 1000ms (1 segundo entre batches)
-            const MAX_RETRIES = 8; // Aumentado de 5 para 8 tentativas
-            const INITIAL_BACKOFF_MS = 2000; // Aumentado de 1s para 2s (backoff mais conservador)
-            
-            let totalSaved = 0;
-            const totalBatches = Math.ceil(data.length / BATCH_SIZE);
-            
-            console.log(`[UPLOAD] Iniciando upload de ${data.length} registros em ${totalBatches} batches`);
+  static normalizeRegional(regional) {
+    const r = String(regional || '').trim().toUpperCase();
+    if (r === 'CENTRO NORTE' || r === 'CENTRO_NORTE' || r === 'CENTRONORTE') return 'CENTRO NORTE';
+    if (r === 'ATLÂNTICO' || r === 'ATLANTICO') return 'ATLANTICO';
+    if (r === 'NORTE') return 'NORTE';
+    return '';
+  }
 
-            // Processar em batches com throttling
-            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-                const startIndex = batchIndex * BATCH_SIZE;
-                const endIndex = Math.min(startIndex + BATCH_SIZE, data.length);
-                const batchData = data.slice(startIndex, endIndex);
-                
-                let retryCount = 0;
-                let batchSuccess = false;
-                
-                // Retry com exponential backoff
-                while (retryCount < MAX_RETRIES && !batchSuccess) {
-                    try {
-                        const batch = db.batch();
-                        
-                        // Adicionar documentos ao batch com ID determinístico (idempotência)
-                        batchData.forEach((item, index) => {
-                            const rowIndex = startIndex + index;
-                            // ID determinístico: uploadId_rowIndex garante idempotência
-                            const docId = `${uploadId}_${rowIndex}`;
-                            const docRef = db.collection(this.COLLECTION_NAME).doc(docId);
-                            
-                            const itemData = {
-                                ...item,
-                                createdAt: timestamp,
-                                uploadId: uploadId,
-                                rowIndex: rowIndex // Para rastreamento
-                            };
-                            
-                            // Usar set com merge para idempotência (não duplica se reimportar)
-                            batch.set(docRef, itemData, { merge: true });
-                        });
-                        
-                        // Commit do batch
-                        await batch.commit();
-                        totalSaved += batchData.length;
-                        batchSuccess = true;
-                        
-                        const progress = Math.round((totalSaved / data.length) * 100);
-                        console.log(`[UPLOAD] Batch ${batchIndex + 1}/${totalBatches} commitado: ${batchData.length} registros (${totalSaved}/${data.length} - ${progress}%)`);
-                        
-                        if (progressCallback) {
-                            progressCallback({
-                                batch: batchIndex + 1,
-                                totalBatches: totalBatches,
-                                saved: totalSaved,
-                                total: data.length,
-                                progress: progress
-                            });
-                        }
-                        
-                    } catch (error) {
-                        retryCount++;
-                        const errorCode = error.code || error.message;
-                        
-                        // Verificar se é erro transitório (retry) ou permanente (fail)
-                        const isTransientError = 
-                            errorCode === 'resource-exhausted' ||
-                            errorCode === 'unavailable' ||
-                            errorCode === 'deadline-exceeded' ||
-                            error.message?.includes('Quota exceeded') ||
-                            error.message?.includes('maximum backoff');
-                        
-                        if (isTransientError && retryCount < MAX_RETRIES) {
-                            // Exponential backoff com jitter (mais conservador para quota exceeded)
-                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 1000; // Aumentado de 500ms para 1000ms de jitter
-                            const delay = Math.min(backoffMs + jitter, 60000); // Limite máximo de 60s
-                            
-                            const delaySeconds = Math.round(delay / 1000);
-                            console.warn(
-                                `[UPLOAD] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
-                                errorCode,
-                                `Aguardando ${delaySeconds}s antes do próximo retry...`
-                            );
-                            
-                            // Atualizar UI durante retry
-                            if (progressCallback) {
-                                progressCallback({
-                                    batch: batchIndex + 1,
-                                    totalBatches: totalBatches,
-                                    saved: totalSaved,
-                                    total: data.length,
-                                    progress: Math.round((totalSaved / data.length) * 100),
-                                    retrying: true,
-                                    retryCount: retryCount,
-                                    nextRetryIn: delaySeconds
-                                });
-                            }
-                            
-                            await this.sleep(delay);
-                        } else {
-                            // Erro permanente ou esgotou retries
-                            console.error(`[UPLOAD] Erro ao salvar batch ${batchIndex + 1}:`, error);
-                            throw error;
-                        }
-                    }
-                }
-                
-                // Throttling entre batches (exceto no último)
-                // Throttling progressivo: aumenta delay conforme o número de batches processados
-                if (batchIndex < totalBatches - 1) {
-                    // Throttling progressivo: batches iniciais mais rápidos, depois mais lentos
-                    const progressiveThrottle = batchIndex < 3 
-                        ? THROTTLE_MS 
-                        : THROTTLE_MS * 1.5; // Aumenta 50% após 3 batches
-                    await this.sleep(progressiveThrottle);
-                }
-            }
+  /* =========================
+     Helper
+  ========================= */
+  static sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
-            // Salvar metadata do upload (com merge para idempotência)
-            if (uploadId) {
-                await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).set({
-                    ...metadata,
-                    totalRecords: data.length,
-                    uploadedAt: timestamp,
-                    uploadedBy: auth.currentUser?.email || 'unknown',
-                    lastUpdated: timestamp
-                }, { merge: true });
-            }
+  static generateUploadId() {
+    return db.collection(this.UPLOADS_COLLECTION).doc().id;
+  }
 
-            console.log(`[UPLOAD] Upload concluído: ${totalSaved} registros salvos com sucesso`);
-            return { success: true, count: totalSaved };
-            
-        } catch (error) {
-            console.error('[UPLOAD] Erro ao salvar dados:', error);
-            return {
-                success: false,
-                error: error.message,
-                errorCode: error.code
-            };
-        }
-    }
+  /* =========================
+     SAVE DATA (com REGIONAL)
+  ========================= */
+  static async saveData(data, metadata = {}, progressCallback = null) {
+    try {
+      const timestamp = getFieldValueServerTimestamp();
+      const uploadId = metadata.uploadId;
+      const regional = this.normalizeRegional(metadata.regional || metadata.REGIONAL);
 
-    /**
-     * Helper: Sleep para throttling
-     */
-    static sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
+      if (!uploadId) throw new Error('uploadId é obrigatório');
+      if (!regional) throw new Error('REGIONAL é obrigatória');
+      if (!Array.isArray(data)) throw new Error('data precisa ser um array');
 
-    /**
-     * Buscar dados com opção de filtro por período NO FIRESTORE (reduz leituras)
-     * filters: { dataInicial?: 'YYYY-MM-DD', dataFinal?: 'YYYY-MM-DD' }
-     */
-    static async getData(filters = {}) {
-        try {
-            const di = String(filters?.dataInicial || '').trim();
-            const df = String(filters?.dataFinal || '').trim();
+      const BATCH_SIZE = 200;
+      const THROTTLE_MS = 900;
 
-            const hasDI = /^\d{4}-\d{2}-\d{2}$/.test(di);
-            const hasDF = /^\d{4}-\d{2}-\d{2}$/.test(df);
+      const MAX_RETRIES = 8;
+      const INITIAL_BACKOFF_MS = 2000;
 
-            let baseQuery = db.collection(this.COLLECTION_NAME);
+      let totalSaved = 0;
+      const totalBatches = Math.ceil(data.length / BATCH_SIZE);
 
-            // Range filter exige orderBy no mesmo campo
-            if (hasDI) baseQuery = baseQuery.where('DATA', '>=', di);
-            if (hasDF) baseQuery = baseQuery.where('DATA', '<=', df);
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const startIndex = batchIndex * BATCH_SIZE;
+        const endIndex = Math.min(startIndex + BATCH_SIZE, data.length);
+        const batchData = data.slice(startIndex, endIndex);
 
-            baseQuery = baseQuery.orderBy('DATA', 'desc');
+        let retryCount = 0;
+        let batchSuccess = false;
 
-            const BATCH_SIZE = (hasDI || hasDF) ? 5000 : 1000;
-            const MAX_BATCHES = (hasDI || hasDF) ? 5 : 20;
+        while (!batchSuccess && retryCount < MAX_RETRIES) {
+          try {
+            const batch = db.batch();
 
-            const data = [];
-            let lastDoc = null;
-            let batchCount = 0;
+            batchData.forEach((item, index) => {
+              const rowIndex = startIndex + index;
+              const docId = `${uploadId}_${rowIndex}`;
+              const ref = db.collection(this.COLLECTION_NAME).doc(docId);
 
-            console.log('[GET DATA] Iniciando busca...', { di, df, hasDI, hasDF });
-
-            do {
-                let q = baseQuery.limit(BATCH_SIZE);
-
-                if (lastDoc) {
-                    q = db.collection(this.COLLECTION_NAME);
-
-                    if (hasDI) q = q.where('DATA', '>=', di);
-                    if (hasDF) q = q.where('DATA', '<=', df);
-
-                    q = q.orderBy('DATA', 'desc').startAfter(lastDoc).limit(BATCH_SIZE);
-                }
-
-                const snapshot = await q.get();
-
-                if (snapshot.empty) {
-                    break;
-                }
-
-                batchCount++;
-                console.log(`[GET DATA] Batch ${batchCount}: ${snapshot.size} documentos carregados (total: ${data.length + snapshot.size})`);
-
-                snapshot.forEach(doc => {
-                    const docData = doc.data();
-
-                    // Converter Timestamp/Date para string ISO usando métodos locais (sem UTC)
-                    if (docData.DATA) {
-                        if (docData.DATA.toDate && typeof docData.DATA.toDate === 'function') {
-                            const date = docData.DATA.toDate();
-                            const year = date.getFullYear();
-                            const month = String(date.getMonth() + 1).padStart(2, '0');
-                            const day = String(date.getDate()).padStart(2, '0');
-                            docData.DATA = `${year}-${month}-${day}`;
-                        } else if (docData.DATA instanceof Date) {
-                            const date = docData.DATA;
-
-                            const utcDay = date.getUTCDate();
-                            const localDay = date.getDate();
-                            const utcMonth = date.getUTCMonth();
-                            const localMonth = date.getMonth();
-
-                            let year, month, day;
-
-                            if (utcDay !== localDay || utcMonth !== localMonth) {
-                                // Date criado como UTC (ex.: new Date("YYYY-MM-DD"))
-                                year = date.getUTCFullYear();
-                                month = date.getUTCMonth() + 1;
-                                day = date.getUTCDate();
-
-                                const localDate = new Date(year, month - 1, day);
-                                year = localDate.getFullYear();
-                                month = localDate.getMonth() + 1;
-                                day = localDate.getDate();
-                            } else {
-                                year = date.getFullYear();
-                                month = date.getMonth() + 1;
-                                day = date.getDate();
-                            }
-
-                            docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        } else if (typeof docData.DATA === 'string') {
-                            const trimmed = docData.DATA.trim();
-
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-                                // Formato brasileiro: DD/MM/YYYY
-                                if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/.test(trimmed)) {
-                                    const parts = trimmed.split(/[\/\-\.]/);
-                                    if (parts.length === 3) {
-                                        const day = parseInt(parts[0], 10);
-                                        const month = parseInt(parts[1], 10);
-                                        const year = parseInt(parts[2], 10);
-                                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                    }
-                                } else {
-                                    // Formato reverso: YYYY/MM/DD
-                                    const m = trimmed.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-                                    if (m) {
-                                        const year = parseInt(m[1], 10);
-                                        const month = parseInt(m[2], 10);
-                                        const day = parseInt(m[3], 10);
-                                        docData.DATA = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    data.push({
-                        id: doc.id,
-                        ...docData
-                    });
-                });
-
-                lastDoc = snapshot.docs[snapshot.docs.length - 1];
-
-                if (batchCount >= MAX_BATCHES) {
-                    console.warn(`[GET DATA] Limite de batches atingido (${MAX_BATCHES}). Total carregado: ${data.length} registros`);
-                    break;
-                }
-
-                // Throttling leve
-                if (snapshot.size === BATCH_SIZE) {
-                    await this.sleep(80);
-                }
-
-            } while (lastDoc);
-
-            console.log(`[GET DATA] Busca concluída: ${data.length} registros carregados em ${batchCount} batches`);
-            return { success: true, data };
-        } catch (error) {
-            console.error('[GET DATA] Erro ao buscar dados:', error);
-            return {
-                success: false,
-                error: error.message,
-                data: []
-            };
-        }
-    }
-
-    /**
-     * Buscar histórico de uploads
-     */
-    static async getUploadHistory() {
-        try {
-            const snapshot = await db.collection(this.UPLOADS_COLLECTION)
-                .orderBy('uploadedAt', 'desc')
-                .limit(5000)
-                .get();
-
-            const history = [];
-            snapshot.forEach(doc => {
-                history.push({
-                    id: doc.id,
-                    ...doc.data()
-                });
+              batch.set(
+                ref,
+                {
+                  ...item,
+                  REGIONAL: regional,
+                  regional,
+                  uploadId,
+                  rowIndex,
+                  createdAt: timestamp
+                },
+                { merge: true }
+              );
             });
 
-            return { success: true, history };
-        } catch (error) {
-            console.error('Erro ao buscar histórico:', error);
-            return {
-                success: false,
-                error: error.message,
-                history: []
-            };
+            await batch.commit();
+
+            totalSaved += batchData.length;
+            batchSuccess = true;
+
+            if (progressCallback) {
+              progressCallback({
+                batch: batchIndex + 1,
+                totalBatches,
+                saved: totalSaved,
+                total: data.length,
+                progress: Math.round((totalSaved / data.length) * 100),
+                retrying: false,
+                retryCount: 0,
+                nextRetryIn: 0
+              });
+            }
+          } catch (error) {
+            retryCount++;
+            const delay = Math.min(INITIAL_BACKOFF_MS * Math.pow(2, retryCount), 60000);
+
+            if (progressCallback) {
+              progressCallback({
+                batch: batchIndex + 1,
+                totalBatches,
+                saved: totalSaved,
+                total: data.length,
+                progress: Math.round((totalSaved / data.length) * 100),
+                retrying: true,
+                retryCount,
+                nextRetryIn: Math.round(delay / 1000)
+              });
+            }
+
+            await this.sleep(delay);
+            if (retryCount >= MAX_RETRIES) throw error;
+          }
         }
-    }
 
-    /**
-     * Gerar ID único para upload
-     */
-    static generateUploadId() {
-        return db.collection(this.UPLOADS_COLLECTION).doc().id;
-    }
-
-    /**
-     * Excluir dados de um upload específico
-     * Implementação robusta com verificação e fallback
-     */
-    static async deleteUpload(uploadId) {
-        if (!uploadId) {
-            return {
-                success: false,
-                error: 'UploadId não fornecido'
-            };
+        if (batchIndex < totalBatches - 1) {
+          await this.sleep(THROTTLE_MS);
         }
+      }
 
-        console.log('[DELETE] Iniciando exclusão do upload:', uploadId);
+      // grava histórico de upload
+      await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).set(
+        {
+          ...metadata,
+          REGIONAL: regional,
+          regional,
+          totalRecords: data.length,
+          uploadedAt: timestamp,
+          uploadedBy: auth.currentUser?.email || 'unknown'
+        },
+        { merge: true }
+      );
 
-        try {
-            let snapshot;
-            let queryMethod = 'indexed';
-
-            // Tentar buscar usando query com índice (método preferido)
-            try {
-                snapshot = await db.collection(this.COLLECTION_NAME)
-                    .where('uploadId', '==', uploadId)
-                    .get();
-                console.log('[DELETE] Query indexada encontrou:', snapshot.size, 'registros');
-            } catch (queryError) {
-                // Se a query falhar (provavelmente falta de índice), usar fallback
-                console.warn('[DELETE] Query indexada falhou, usando método alternativo:', queryError.message);
-                
-                // Fallback: Buscar todos os registros e filtrar no cliente
-                // ATENÇÃO: Isso pode ser lento para grandes volumes
-                const allSnapshot = await db.collection(this.COLLECTION_NAME).get();
-                const filteredDocs = [];
-                
-                allSnapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.uploadId === uploadId) {
-                        filteredDocs.push(doc);
-                    }
-                });
-
-                // Criar um QuerySnapshot simulado
-                snapshot = {
-                    size: filteredDocs.length,
-                    empty: filteredDocs.length === 0,
-                    forEach: (callback) => {
-                        filteredDocs.forEach(callback);
-                    },
-                    docs: filteredDocs
-                };
-
-                queryMethod = 'fallback';
-                console.log('[DELETE] Método alternativo encontrou:', snapshot.size, 'registros');
-            }
-
-            // Verificar se há registros para excluir
-            if (snapshot.empty || snapshot.size === 0) {
-                console.log('[DELETE] Nenhum registro encontrado para uploadId:', uploadId);
-                
-                // Mesmo sem registros, deletar o registro do upload (limpeza)
-                try {
-                    await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
-                    console.log('[DELETE] Registro de upload removido da coleção uploads');
-                } catch (deleteError) {
-                    console.warn('[DELETE] Erro ao remover registro de upload:', deleteError.message);
-                }
-
-                return {
-                    success: true,
-                    deletedCount: 0,
-                    method: queryMethod
-                };
-            }
-
-            // Processar exclusão em batches com throttling e retry
-            // CONFIGURAÇÃO ULTRA CONSERVADORA para evitar quota exceeded
-            const BATCH_SIZE = 100; // Reduzido drasticamente para evitar quota
-            const THROTTLE_MS = 2000; // 2 segundos entre batches (muito conservador)
-            const MAX_RETRIES = 10; // Mais tentativas
-            const INITIAL_BACKOFF_MS = 5000; // 5 segundos inicial (muito conservador)
-            
-            let deletedCount = 0;
-            const docsToDelete = [];
-            snapshot.forEach((doc) => {
-                docsToDelete.push(doc);
-            });
-
-            const totalBatches = Math.ceil(docsToDelete.length / BATCH_SIZE);
-            console.log(`[DELETE] Preparando exclusão de ${docsToDelete.length} registros em ${totalBatches} batches`);
-
-            // Processar batches com throttling e retry
-            for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-                const startIndex = batchIndex * BATCH_SIZE;
-                const endIndex = Math.min(startIndex + BATCH_SIZE, docsToDelete.length);
-                const batchDocs = docsToDelete.slice(startIndex, endIndex);
-                
-                let retryCount = 0;
-                let batchSuccess = false;
-                
-                // Retry com exponential backoff
-                while (retryCount < MAX_RETRIES && !batchSuccess) {
-                    try {
-                        const batch = db.batch();
-                        batchDocs.forEach(doc => {
-                            batch.delete(doc.ref);
-                        });
-                        
-                        await batch.commit();
-                        deletedCount += batchDocs.length;
-                        batchSuccess = true;
-                        
-                        console.log(`[DELETE] Batch ${batchIndex + 1}/${totalBatches} commitado: ${batchDocs.length} registros (${deletedCount}/${docsToDelete.length})`);
-                        
-                    } catch (error) {
-                        retryCount++;
-                        const errorCode = error.code || error.message;
-                        
-                        const isTransientError = 
-                            errorCode === 'resource-exhausted' ||
-                            errorCode === 'unavailable' ||
-                            errorCode === 'deadline-exceeded' ||
-                            error.message?.includes('Quota exceeded');
-                        
-                        if (isTransientError && retryCount < MAX_RETRIES) {
-                            // Backoff muito mais conservador para quota exceeded
-                            const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, retryCount - 1);
-                            const jitter = Math.random() * 2000; // Jitter maior
-                            const delay = Math.min(backoffMs + jitter, 120000); // Máximo 2 minutos
-                            const delaySeconds = Math.round(delay / 1000);
-                            
-                            console.warn(
-                                `[DELETE] Erro transitório no batch ${batchIndex + 1} (tentativa ${retryCount}/${MAX_RETRIES}):`,
-                                errorCode,
-                                `Aguardando ${delaySeconds}s (${Math.round(delaySeconds / 60)}min) antes do próximo retry...`
-                            );
-                            
-                            await this.sleep(delay);
-                        } else {
-                            console.error(`[DELETE] Erro ao excluir batch ${batchIndex + 1}:`, error);
-                            throw error;
-                        }
-                    }
-                }
-                
-                // Throttling progressivo entre batches (aumenta conforme avança)
-                if (batchIndex < totalBatches - 1) {
-                    // Throttling progressivo: começa com 2s, aumenta para 3s após 5 batches
-                    const progressiveThrottle = batchIndex < 5 
-                        ? THROTTLE_MS 
-                        : THROTTLE_MS * 1.5; // 3 segundos após 5 batches
-                    console.log(`[DELETE] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch...`);
-                    await this.sleep(progressiveThrottle);
-                }
-            }
-
-            // Verificar se a exclusão foi bem-sucedida
-            // Aguardar um pouco para garantir propagação
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Verificar se ainda existem registros (verificação opcional)
-            let verificationSnapshot;
-            try {
-                verificationSnapshot = await db.collection(this.COLLECTION_NAME)
-                    .where('uploadId', '==', uploadId)
-                    .limit(1)
-                    .get();
-            } catch (e) {
-                // Se a verificação falhar (falta de índice), pular
-                verificationSnapshot = { size: 0 };
-            }
-
-            if (verificationSnapshot.size > 0) {
-                console.warn('[DELETE] AVISO: Ainda existem', verificationSnapshot.size, 'registros após exclusão');
-                return {
-                    success: false,
-                    error: `Exclusão parcial: ${verificationSnapshot.size} registros ainda existem`,
-                    deletedCount: deletedCount,
-                    remainingCount: verificationSnapshot.size
-                };
-            }
-
-            // Deletar o registro do upload na coleção uploads
-            try {
-                await db.collection(this.UPLOADS_COLLECTION).doc(uploadId).delete();
-                console.log('[DELETE] Registro de upload removido da coleção uploads');
-            } catch (deleteError) {
-                console.warn('[DELETE] Erro ao remover registro de upload:', deleteError.message);
-                // Não falhar a operação se apenas o registro de upload não for deletado
-            }
-
-            console.log('[DELETE] Exclusão concluída com sucesso:', deletedCount, 'registros removidos');
-
-            return {
-                success: true,
-                deletedCount: deletedCount,
-                method: queryMethod
-            };
-
-        } catch (error) {
-            console.error('[DELETE] Erro ao excluir upload:', error);
-            console.error('[DELETE] Stack trace:', error.stack);
-            
-            return {
-                success: false,
-                error: error.message,
-                errorCode: error.code || 'UNKNOWN',
-                deletedCount: 0
-            };
-        }
+      return { success: true, count: totalSaved };
+    } catch (error) {
+      console.error('[UPLOAD]', error);
+      return { success: false, error: error.message };
     }
+  }
 
-    /**
-     * LIMPEZA COMPLETA - Remove TODOS os dados das coleções
-     * ⚠️ ATENÇÃO: Esta função é DESTRUTIVA e não pode ser desfeita!
-     * Requer confirmação dupla antes de executar.
-     * Use apenas quando necessário limpar completamente o banco.
-     */
-    static async clearAllData() {
-        console.log('[CLEAR ALL] Iniciando limpeza completa do banco de dados...');
-        
-        // CONFIGURAÇÃO ULTRA CONSERVADORA para evitar quota exceeded
-        const CLEAR_BATCH_SIZE = 100; // Batches muito pequenos
-        const CLEAR_THROTTLE_MS = 3000; // 3 segundos entre batches
-        const CLEAR_MAX_RETRIES = 15; // Muitas tentativas
-        const CLEAR_INITIAL_BACKOFF = 10000; // 10 segundos inicial
-        const MAX_SNAPSHOT_RETRIES = 5; // Tentativas para buscar snapshot
-        
-        let totalDeleted = 0;
-        const results = {
-            reinteradas: 0,
-            uploads: 0
-        };
+  /* =========================
+     GET DATA (REGIONAL + DATA)
+     - DATA deve estar no formato "YYYY-MM-DD"
+  ========================= */
+  static async getData(filters = {}) {
+    try {
+      const regional = this.normalizeRegional(filters.regional);
+      const di = String(filters.dataInicial || '').trim();
+      const df = String(filters.dataFinal || '').trim();
 
-        try {
-            // 1. Limpar coleção 'reinteradas'
-            console.log('[CLEAR ALL] Limpando coleção reinteradas...');
-            let reinteradasSnapshot;
-            let snapshotRetryCount = 0;
-            
-            // Tentar buscar snapshot com retry (pode falhar por quota)
-            while (snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
-                try {
-                    reinteradasSnapshot = await db.collection(this.COLLECTION_NAME).limit(10000).get();
-                    break; // Sucesso
-                } catch (error) {
-                    snapshotRetryCount++;
-                    if (error.code === 'resource-exhausted' && snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
-                        const waitTime = 5000 * snapshotRetryCount; // 5s, 10s, 15s, 20s, 25s
-                        console.warn(`[CLEAR ALL] Quota exceeded ao buscar reinteradas. Aguardando ${waitTime/1000}s antes de tentar novamente... (tentativa ${snapshotRetryCount}/${MAX_SNAPSHOT_RETRIES})`);
-                        await this.sleep(waitTime);
-                    } else {
-                        console.error('[CLEAR ALL] Erro ao buscar reinteradas:', error);
-                        throw error;
-                    }
-                }
-            }
+      if (!regional) return { success: true, data: [] };
 
-            const reinteradasDocs = [];
-            reinteradasSnapshot.forEach(doc => {
-                reinteradasDocs.push(doc);
-            });
+      let q = db.collection(this.COLLECTION_NAME).where('REGIONAL', '==', regional);
 
-            const reinteradasBatches = Math.ceil(reinteradasDocs.length / CLEAR_BATCH_SIZE);
-            console.log(`[CLEAR ALL] Encontrados ${reinteradasDocs.length} documentos em reinteradas (${reinteradasBatches} batches de ${CLEAR_BATCH_SIZE})`);
+      // range por string ISO (YYYY-MM-DD) funciona
+      if (di) q = q.where('DATA', '>=', di);
+      if (df) q = q.where('DATA', '<=', df);
 
-            for (let batchIndex = 0; batchIndex < reinteradasBatches; batchIndex++) {
-                const startIndex = batchIndex * CLEAR_BATCH_SIZE;
-                const endIndex = Math.min(startIndex + CLEAR_BATCH_SIZE, reinteradasDocs.length);
-                const batchDocs = reinteradasDocs.slice(startIndex, endIndex);
-                
-                let batchRetryCount = 0;
-                let batchSuccess = false;
-                
-                // Retry com exponential backoff muito conservador
-                while (batchRetryCount < CLEAR_MAX_RETRIES && !batchSuccess) {
-                    try {
-                        const batch = db.batch();
-                        batchDocs.forEach(doc => {
-                            batch.delete(doc.ref);
-                        });
-                        
-                        await batch.commit();
-                        results.reinteradas += batchDocs.length;
-                        totalDeleted += batchDocs.length;
-                        batchSuccess = true;
-                        
-                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${reinteradasBatches} de reinteradas commitado: ${batchDocs.length} documentos (${results.reinteradas}/${reinteradasDocs.length} total)`);
-                        
-                    } catch (error) {
-                        batchRetryCount++;
-                        const errorCode = error.code || error.message;
-                        const isTransientError = 
-                            errorCode === 'resource-exhausted' ||
-                            errorCode === 'unavailable' ||
-                            errorCode === 'deadline-exceeded';
-                        
-                        if (isTransientError && batchRetryCount < CLEAR_MAX_RETRIES) {
-                            const backoffMs = CLEAR_INITIAL_BACKOFF * Math.pow(2, batchRetryCount - 1);
-                            const jitter = Math.random() * 5000;
-                            const delay = Math.min(backoffMs + jitter, 180000); // Máximo 3 minutos
-                            const delaySeconds = Math.round(delay / 1000);
-                            
-                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de reinteradas (tentativa ${batchRetryCount}/${CLEAR_MAX_RETRIES}): ${errorCode}, aguardando ${delaySeconds}s (${Math.round(delaySeconds / 60)}min)...`);
-                            await this.sleep(delay);
-                        } else {
-                            console.error(`[CLEAR ALL] Erro ao excluir batch ${batchIndex + 1} de reinteradas após ${batchRetryCount} tentativas:`, error);
-                            // Continuar com próximo batch mesmo se este falhar (não parar tudo)
-                            break;
-                        }
-                    }
-                }
-                
-                // Throttling progressivo muito conservador
-                if (batchIndex < reinteradasBatches - 1) {
-                    const progressiveThrottle = batchIndex < 3 ? CLEAR_THROTTLE_MS : CLEAR_THROTTLE_MS * 2; // 6s após 3 batches
-                    console.log(`[CLEAR ALL] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch de reinteradas...`);
-                    await this.sleep(progressiveThrottle);
-                }
-            }
+      // Firestore exige orderBy no campo do range
+      q = q.orderBy('DATA', 'desc').limit(5000);
 
-            // 2. Limpar coleção 'uploads'
-            console.log('[CLEAR ALL] Limpando coleção uploads...');
-            let uploadsSnapshot;
-            snapshotRetryCount = 0;
-            
-            // Tentar buscar snapshot com retry
-            while (snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
-                try {
-                    uploadsSnapshot = await db.collection(this.UPLOADS_COLLECTION).limit(1000).get();
-                    break; // Sucesso
-                } catch (error) {
-                    snapshotRetryCount++;
-                    if (error.code === 'resource-exhausted' && snapshotRetryCount < MAX_SNAPSHOT_RETRIES) {
-                        const waitTime = 5000 * snapshotRetryCount;
-                        console.warn(`[CLEAR ALL] Quota exceeded ao buscar uploads. Aguardando ${waitTime/1000}s... (tentativa ${snapshotRetryCount}/${MAX_SNAPSHOT_RETRIES})`);
-                        await this.sleep(waitTime);
-                    } else {
-                        console.error('[CLEAR ALL] Erro ao buscar uploads:', error);
-                        throw error;
-                    }
-                }
-            }
+      const snapshot = await q.get();
+      const data = [];
+      snapshot.forEach(doc => data.push({ id: doc.id, ...doc.data() }));
 
-            const uploadsDocs = [];
-            uploadsSnapshot.forEach(doc => {
-                uploadsDocs.push(doc);
-            });
-
-            const uploadsBatches = Math.ceil(uploadsDocs.length / CLEAR_BATCH_SIZE);
-            console.log(`[CLEAR ALL] Encontrados ${uploadsDocs.length} documentos em uploads (${uploadsBatches} batches de ${CLEAR_BATCH_SIZE})`);
-
-            for (let batchIndex = 0; batchIndex < uploadsBatches; batchIndex++) {
-                const startIndex = batchIndex * CLEAR_BATCH_SIZE;
-                const endIndex = Math.min(startIndex + CLEAR_BATCH_SIZE, uploadsDocs.length);
-                const batchDocs = uploadsDocs.slice(startIndex, endIndex);
-                
-                let batchRetryCount = 0;
-                let batchSuccess = false;
-                
-                // Retry com exponential backoff muito conservador
-                while (batchRetryCount < CLEAR_MAX_RETRIES && !batchSuccess) {
-                    try {
-                        const batch = db.batch();
-                        batchDocs.forEach(doc => {
-                            batch.delete(doc.ref);
-                        });
-                        
-                        await batch.commit();
-                        results.uploads += batchDocs.length;
-                        totalDeleted += batchDocs.length;
-                        batchSuccess = true;
-                        
-                        console.log(`[CLEAR ALL] Batch ${batchIndex + 1}/${uploadsBatches} de uploads commitado: ${batchDocs.length} documentos (${results.uploads}/${uploadsDocs.length} total)`);
-                        
-                    } catch (error) {
-                        batchRetryCount++;
-                        const errorCode = error.code || error.message;
-                        const isTransientError = 
-                            errorCode === 'resource-exhausted' ||
-                            errorCode === 'unavailable' ||
-                            errorCode === 'deadline-exceeded';
-                        
-                        if (isTransientError && batchRetryCount < CLEAR_MAX_RETRIES) {
-                            const backoffMs = CLEAR_INITIAL_BACKOFF * Math.pow(2, batchRetryCount - 1);
-                            const jitter = Math.random() * 5000;
-                            const delay = Math.min(backoffMs + jitter, 180000); // Máximo 3 minutos
-                            const delaySeconds = Math.round(delay / 1000);
-                            
-                            console.warn(`[CLEAR ALL] Erro transitório no batch ${batchIndex + 1} de uploads (tentativa ${batchRetryCount}/${CLEAR_MAX_RETRIES}): ${errorCode}, aguardando ${delaySeconds}s...`);
-                            await this.sleep(delay);
-                        } else {
-                            console.error(`[CLEAR ALL] Erro ao excluir batch ${batchIndex + 1} de uploads após ${batchRetryCount} tentativas:`, error);
-                            // Continuar com próximo batch
-                            break;
-                        }
-                    }
-                }
-                
-                // Throttling progressivo
-                if (batchIndex < uploadsBatches - 1) {
-                    const progressiveThrottle = batchIndex < 3 ? CLEAR_THROTTLE_MS : CLEAR_THROTTLE_MS * 2;
-                    console.log(`[CLEAR ALL] Aguardando ${Math.round(progressiveThrottle / 1000)}s antes do próximo batch de uploads...`);
-                    await this.sleep(progressiveThrottle);
-                }
-            }
-
-            console.log(`[CLEAR ALL] Limpeza completa concluída: ${totalDeleted} documentos removidos (reinteradas: ${results.reinteradas}, uploads: ${results.uploads})`);
-            
-            return {
-                success: true,
-                deletedCount: totalDeleted,
-                reinteradas: results.reinteradas,
-                uploads: results.uploads
-            };
-
-        } catch (error) {
-            console.error('[CLEAR ALL] Erro na limpeza completa:', error);
-            return {
-                success: false,
-                error: error.message,
-                errorCode: error.code || 'UNKNOWN',
-                deletedCount: totalDeleted,
-                reinteradas: results.reinteradas,
-                uploads: results.uploads
-            };
-        }
+      return { success: true, data };
+    } catch (error) {
+      console.error('[GET DATA]', error);
+      return { success: false, error: error.message, data: [] };
     }
+  }
+
+  /* =========================
+     GET UPLOAD HISTORY (REGIONAL)
+     com fallback (sem índice)
+  ========================= */
+  static async getUploadHistory(regional = null) {
+    try {
+      const reg = this.normalizeRegional(regional);
+
+      if (!reg) {
+        const snap = await db
+          .collection(this.UPLOADS_COLLECTION)
+          .orderBy('uploadedAt', 'desc')
+          .limit(5000)
+          .get();
+
+        const history = [];
+        snap.forEach(d => history.push({ id: d.id, ...d.data() }));
+        return { success: true, history };
+      }
+
+      try {
+        const snap = await db
+          .collection(this.UPLOADS_COLLECTION)
+          .where('REGIONAL', '==', reg)
+          .orderBy('uploadedAt', 'desc')
+          .limit(5000)
+          .get();
+
+        const history = [];
+        snap.forEach(d => history.push({ id: d.id, ...d.data() }));
+        return { success: true, history };
+      } catch {
+        // fallback sem orderBy (quando não há índice composto)
+        const snap = await db
+          .collection(this.UPLOADS_COLLECTION)
+          .where('REGIONAL', '==', reg)
+          .limit(5000)
+          .get();
+
+        const history = [];
+        snap.forEach(d => history.push({ id: d.id, ...d.data() }));
+
+        history.sort((a, b) => {
+          const ta = a.uploadedAt?.toMillis?.() || 0;
+          const tb = b.uploadedAt?.toMillis?.() || 0;
+          return tb - ta;
+        });
+
+        return { success: true, history };
+      }
+    } catch (error) {
+      console.error('[UPLOAD HISTORY]', error);
+      return { success: false, error: error.message, history: [] };
+    }
+  }
+
+  /* =========================
+     DELETE UPLOAD
+     - remove doc uploads/{uploadId}
+     - remove registros reinteradas onde uploadId == {uploadId}
+========================= */
+  static async deleteUpload(uploadId) {
+    try {
+      const id = String(uploadId || '').trim();
+      if (!id) throw new Error('uploadId inválido');
+
+      let deletedCount = 0;
+
+      // 1) apagar registros por uploadId em lotes
+      while (true) {
+        const snap = await db
+          .collection(this.COLLECTION_NAME)
+          .where('uploadId', '==', id)
+          .limit(450)
+          .get();
+
+        if (snap.empty) break;
+
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        deletedCount += snap.size;
+
+        // pequeno respiro (evita burst)
+        await this.sleep(250);
+      }
+
+      // 2) apagar histórico do upload
+      await db.collection(this.UPLOADS_COLLECTION).doc(id).delete();
+
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('[DELETE UPLOAD]', error);
+      return { success: false, error: error.message, deletedCount: 0 };
+    }
+  }
+
+  /* =========================
+     CLEAR ALL DATA
+     - apaga TUDO em uploads e reinteradas
+     (cuidado: operação pesada)
+========================= */
+  static async clearAllData() {
+    try {
+      let deletedData = 0;
+      let deletedUploads = 0;
+
+      // apagar reinteradas
+      while (true) {
+        const snap = await db.collection(this.COLLECTION_NAME).limit(450).get();
+        if (snap.empty) break;
+
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        deletedData += snap.size;
+        await this.sleep(300);
+      }
+
+      // apagar uploads
+      while (true) {
+        const snap = await db.collection(this.UPLOADS_COLLECTION).limit(450).get();
+        if (snap.empty) break;
+
+        const batch = db.batch();
+        snap.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+
+        deletedUploads += snap.size;
+        await this.sleep(300);
+      }
+
+      return { success: true, deletedData, deletedUploads };
+    } catch (error) {
+      console.error('[CLEAR ALL]', error);
+      return { success: false, error: error.message };
+    }
+  }
 }

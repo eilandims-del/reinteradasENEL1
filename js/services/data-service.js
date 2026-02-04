@@ -1,12 +1,11 @@
 /**
- * Serviço de Dados - Lógica de negócio para rankings e análises
+ * Serviços de dados – Heatmap, Ranking e utilidades
  */
 
 /* =========================
-   HELPERS GERAIS
+   Normalização
 ========================= */
-
-function normKey(v) {
+export function normKey(v) {
   return String(v ?? '')
     .trim()
     .toUpperCase()
@@ -18,207 +17,220 @@ function normKey(v) {
     .trim();
 }
 
+/**
+ * Normaliza chave de campo (para achar colunas equivalentes)
+ */
+function normalizeFieldKey(k) {
+  return String(k || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Pega valor de um campo mesmo com variações do nome:
+ * - "ALIMENT." vs "ALIMENT" vs "ALIMENTADOR"
+ * - com/sem ponto
+ * - diferenças de caixa e espaços
+ */
+export function getFieldValue(row, fieldName) {
+  if (!row) return '';
+
+  // 1) direto
+  if (row[fieldName] != null) return row[fieldName];
+
+  // 2) sem ponto
+  const noDot = String(fieldName).replace(/\./g, '');
+  if (row[noDot] != null) return row[noDot];
+
+  // 3) por normalização
+  const target = normalizeFieldKey(fieldName);
+  const found = Object.keys(row).find(k => normalizeFieldKey(k) === target);
+  if (found) return row[found];
+
+  return '';
+}
+
+/* =========================
+   Coordenadas por CONJUNTO
+========================= */
+export const coordenadasConjuntos = {
+  // ===== CENTRO NORTE =====
+  'NOVA RUSSAS': [-4.7058, -40.5659],
+  'MACAOCA': [-4.758647, -39.481451],
+  'CANINDE': [-4.3583, -39.3116],
+  'QUIXERAMOBIM': [-5.1990, -39.2927],
+  'IPU': [-4.3220, -40.7107],
+  'INDEPENDENCIA': [-5.3960, -40.3080],
+  'ARARENDA': [-4.7448, -40.8311],
+  'BOA VIAGEM': [-5.1271, -39.7336],
+  'INHUPORANGA': [-4.097712, -39.060548],
+  'SANTA QUITERIA': [-4.3324, -40.1572],
+  'CRATEUS': [-5.1783, -40.6696],
+  'MONSENHOR TABOSA': [-4.7923, -40.0645],
+  'ARARAS I': [-4.2096, -40.4498],
+  'BANABUIU': [-5.3054, -38.9182],
+  'QUIXADA': [-4.9716, -39.0161],
+
+  // ===== NORTE =====
+  'GRANJA': [-3.1276, -40.8266],
+  'CAMOCIM': [-2.9020, -40.8417],
+  'MASSAPE': [-3.5239, -40.3422],
+  'SOBRAL I': [-3.6860, -40.3497],
+  'CARACARA SOBRAL': [-3.7145, -40.3158],
+  'VICOSA DO CEARA': [-3.5664, -41.0916],
+  'TIANGUA': [-3.7319, -40.9923],
+  'COREAU': [-3.5416, -40.6586],
+  'SOBRAL IV': [-3.7009, -40.3224],
+  'SOBRAL V': [-3.7254, -40.2967],
+  'INHUCU': [-3.3129, -41.0052],
+  'MUCAMBO': [-3.9045, -40.7456],
+  'IBIAPINA': [-3.9239, -41.1350],
+  'CARIRE': [-3.9486, -40.4766],
+
+  // ===== ATLÂNTICO =====
+  'BAIXO ACARAU II': [-3.0415, -39.8423],
+  'ITAREMA': [-2.9213, -39.9167],
+  'UMIRIM': [-3.6765, -39.3464],
+  'ITAPAJE': [-3.6832, -39.5855],
+  'CRUZ': [-2.9175, -40.1767],
+  'PARACURU': [-3.4140, -39.0305],
+  'MARCO': [-3.1196, -40.1474],
+  'ITAPIPOCA': [-3.4944, -39.5786],
+  'SAO LUIS DO CURU': [-3.6692, -39.2393],
+  'TRAIRI': [-3.2766, -39.2683],
+  'AMONTADA': [-3.3602, -39.8285],
+  'APUIARES': [-3.9451, -39.4355],
+  'ACARAU': [-2.8870, -40.1194],
+  'PARAIPABA': [-3.4393, -39.1481]
+};
+
+/* =========================
+   Coordenada do Conjunto
+========================= */
+export function getCoordenadaConjunto(nome) {
+  const key = normKey(nome);
+  return coordenadasConjuntos[key] || null;
+}
+
+/* =========================
+   Heatmap por CONJUNTO
+   - aceita CONJUNTO / CONJUNTOS
+========================= */
+export function generateHeatmapByConjunto(data) {
+  const acc = new Map();
+
+  (data || []).forEach(row => {
+    const conjRaw =
+      getFieldValue(row, 'CONJUNTO') ||
+      getFieldValue(row, 'CONJUNTOS') ||
+      row?.CONJUNTO ||
+      row?.CONJUNTOS;
+
+    const conj = normKey(conjRaw);
+    if (!conj) return;
+
+    acc.set(conj, (acc.get(conj) || 0) + 1);
+  });
+
+  const points = [];
+
+  acc.forEach((count, conj) => {
+    const coord = coordenadasConjuntos[conj];
+    if (!coord) return;
+
+    points.push({
+      lat: coord[0],
+      lng: coord[1],
+      intensity: count,
+      label: conj
+    });
+  });
+
+  return points;
+}
+
+/* =========================
+   Alimentador: extrair BASE (ex: "TLM82")
+   casa com o índice do KML no mapa.js
+========================= */
 function extractAlimBase(name) {
   const n = normKey(name);
+
+  // pega padrão 3 letras + 2 dígitos (TLM82, TLO21 etc)
   const m = n.match(/([A-Z]{3}\s?\d{2})/);
   if (!m) return n;
+
   return m[1].replace(/\s+/g, '');
 }
 
-function getAlimentadorRaw(item) {
-  return (
-    item.ALIMENT ||
-    item.ALIMENTADOR ||
-    item.ALIMEN ||
-    item.ALIM ||
-    item['ALIMENT.'] ||
-    item['ALIMEN.'] ||
-    ''
-  );
-}
-
 /* =========================
-   RANKING POR ELEMENTO
+   Heatmap por ALIMENTADOR
+   - lê ALIMENT. / ALIMENTADOR / ALIMENT
+   - extrai BASE (TLM82) e usa alimentadorCenters[baseNorm]
 ========================= */
-export function generateRankingElemento(data) {
-  const elementos = {};
+export function generateHeatmapByAlimentador(data, alimentadorCenters = {}) {
+  const acc = new Map();
 
-  data.forEach(item => {
-    const elemento = item.ELEMENTO || item.ELEMENTOS || '';
-    if (!elemento) return;
+  (data || []).forEach(row => {
+    const alimRaw =
+      getFieldValue(row, 'ALIMENT.') ||
+      getFieldValue(row, 'ALIMENTADOR') ||
+      getFieldValue(row, 'ALIMENT');
 
-    if (!elementos[elemento]) elementos[elemento] = [];
-    elementos[elemento].push(item);
+    const base = extractAlimBase(alimRaw);
+    const baseKey = normKey(base);
+    if (!baseKey) return;
+
+    acc.set(baseKey, (acc.get(baseKey) || 0) + 1);
   });
 
-  return Object.entries(elementos)
-    .filter(([_, ocorrencias]) => ocorrencias.length > 1)
-    .map(([elemento, ocorrencias]) => ({
-      elemento,
-      count: ocorrencias.length,
-      ocorrencias
-    }))
-    .sort((a, b) => b.count - a.count);
-}
+  const points = [];
 
-/* =========================
-   HEATMAP POR ALIMENTADOR (KML)
-   REGRA: reiterada = ELEMENTO com contagem GLOBAL >= 2
-========================= */
-export function generateHeatmapByAlimentador(data, alimentadorCoords = {}) {
-  // 1) Contagem global por ELEMENTO
-  const globalElemCount = new Map();
-  for (const item of data) {
-    const elemento = normKey(item.ELEMENTO || item.ELEMENTOS);
-    if (!elemento) continue;
-    globalElemCount.set(elemento, (globalElemCount.get(elemento) || 0) + 1);
-  }
+  acc.forEach((count, baseKey) => {
+    const center = alimentadorCenters[baseKey];
+    if (!center) return;
 
-  // 2) Soma por alimentador apenas elementos reiterados
-  const byAlim = new Map(); // alimBaseNorm -> total
-
-  for (const item of data) {
-    const elemento = normKey(item.ELEMENTO || item.ELEMENTOS);
-    if (!elemento) continue;
-
-    if ((globalElemCount.get(elemento) || 0) < 2) continue;
-
-    const alim = extractAlimBase(getAlimentadorRaw(item));
-    if (!alim) continue;
-
-    const key = normKey(alim);
-    byAlim.set(key, (byAlim.get(key) || 0) + 1);
-  }
-
-  const heatmap = [];
-  const missing = [];
-
-  for (const [alimKey, total] of byAlim.entries()) {
-    if (total <= 0) continue;
-
-    const coordInfo = alimentadorCoords[alimKey];
-    if (!coordInfo) {
-      missing.push(alimKey);
-      continue;
-    }
-
-    heatmap.push({
-      lat: coordInfo.lat,
-      lng: coordInfo.lng,
-      intensity: total,
-      label: coordInfo.display || alimKey,
-      base: alimKey
+    points.push({
+      lat: center.lat,
+      lng: center.lng,
+      intensity: count,
+      label: center.display || baseKey,
+      base: baseKey
     });
-  }
-
-  console.log('[HEATMAP-ALIM] alimentadores lidos:', byAlim.size, 'pontos:', heatmap.length);
-  if (missing.length) {
-    console.warn('[HEATMAP-ALIM] sem coords (top 30):', missing.slice(0, 30));
-  }
-
-  return heatmap;
-}
-
-/* =========================
-   HEATMAP POR CONJUNTO (CIDADES)
-   REGRA: reiterada = ELEMENTO com contagem GLOBAL >= 2
-========================= */
-export function generateHeatmapByConjunto(data) {
-  // 1) Contagem global por ELEMENTO
-  const globalElemCount = new Map();
-  for (const item of data) {
-    const elemento = normKey(item.ELEMENTO || item.ELEMENTOS);
-    if (!elemento) continue;
-    globalElemCount.set(elemento, (globalElemCount.get(elemento) || 0) + 1);
-  }
-
-  // 2) Soma por conjunto apenas elementos reiterados
-  const byConjunto = new Map(); // conjuntoNorm -> { display, total }
-
-  for (const item of data) {
-    const elemento = normKey(item.ELEMENTO || item.ELEMENTOS);
-    if (!elemento) continue;
-
-    if ((globalElemCount.get(elemento) || 0) < 2) continue;
-
-    const conjuntoRaw = item.CONJUNTO;
-    const conjuntoNorm = normKey(conjuntoRaw);
-    if (!conjuntoNorm) continue;
-
-    if (!byConjunto.has(conjuntoNorm)) {
-      byConjunto.set(conjuntoNorm, {
-        display: String(conjuntoRaw ?? '').trim(),
-        total: 0
-      });
-    }
-
-    byConjunto.get(conjuntoNorm).total += 1;
-  }
-
-  const coordenadasConjuntos = {
-    'NOVA RUSSAS': [-4.7058, -40.5659],
-    'MACAOCA': [-4.758647, -39.481451], 
-    'CANINDÉ': [-4.3583, -39.3116],
-    'QUIXERAMOBIM': [-5.1990, -39.2927],
-    'IPU': [-4.3220, -40.7107],
-    'INDEPENDÊNCIA': [-5.3960, -40.3080],
-    'ARARENDA': [-4.7448, -40.8311],
-    'BOA VIAGEM': [-5.1271, -39.7336],
-    'INHUPORANGA': [-4.097712, -39.060548], 
-    'SANTA QUITÉRIA': [-4.3324, -40.1572],
-    'CRATEÚS': [-5.1783, -40.6696],
-    'MONSENHOR TABOSA': [-4.7923, -40.0645],
-    'ARARAS I': [-4.2096, -40.4498],
-    'BANABUIÚ': [-5.3054, -38.9182],
-    'QUIXADÁ': [-4.9716, -39.0161]
-  };
-  
-
-  const coords = {};
-  const displayByKey = {};
-  Object.entries(coordenadasConjuntos).forEach(([k, v]) => {
-    const nk = normKey(k);
-    coords[nk] = v;
-    displayByKey[nk] = k;
   });
 
-  const heatmap = [];
-  const missing = [];
-
-  for (const [conjuntoNorm, bucket] of byConjunto.entries()) {
-    if (bucket.total <= 0) continue;
-
-    const coord = coords[conjuntoNorm];
-    if (!coord) {
-      missing.push(bucket.display);
-      continue;
-    }
-
-    heatmap.push({
-      lat: coord[0],
-      lng: coord[1],
-      intensity: bucket.total,
-      label: displayByKey[conjuntoNorm] || bucket.display
-    });
-  }
-
-  console.log('[HEATMAP-CONJ] conjuntos lidos:', byConjunto.size, 'pontos:', heatmap.length);
-  if (missing.length) {
-    console.warn('[HEATMAP-CONJ] sem coords (top 30):', missing.slice(0, 30));
-  }
-
-  return heatmap;
+  return points;
 }
 
 /* =========================
-   UTILIDADES EXISTENTES
+   Utilidades usadas no main.js / modal
 ========================= */
+
+/**
+ * Retorna TODAS as colunas encontradas no dataset
+ * (com variações de chaves)
+ */
 export function getAllColumns(data) {
-  const cols = new Set();
-  data.forEach(i => Object.keys(i).forEach(k => cols.add(k)));
-  return Array.from(cols);
+  const set = new Set();
+  (data || []).forEach(row => {
+    if (!row || typeof row !== 'object') return;
+    Object.keys(row).forEach(k => set.add(k));
+  });
+  return Array.from(set);
 }
 
+/**
+ * Retorna ocorrências do ELEMENTO (robusto: tenta achar a coluna ELEMENTO)
+ */
 export function getOcorrenciasByElemento(data, elemento) {
-  return data.filter(i => i.ELEMENTO === elemento);
+  const alvo = normKey(elemento);
+  if (!alvo) return [];
+
+  return (data || []).filter(row => {
+    const elRaw = getFieldValue(row, 'ELEMENTO');
+    return normKey(elRaw) === alvo;
+  });
 }

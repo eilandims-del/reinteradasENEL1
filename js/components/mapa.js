@@ -3,13 +3,12 @@ import { generateHeatmapByAlimentador, generateHeatmapByConjunto } from '../serv
 let map;
 let heatLayer;
 let markersLayer;
-let kmlLayer;
+let linesLayer;
+let regionLayer;
 
 let uiMounted = false;
 let mode = 'CONJUNTO'; // 'CONJUNTO' | 'ALIMENTADOR'
 let lastData = [];
-
-// anti-race: só o update mais recente pode desenhar
 let renderSeq = 0;
 
 // alimentadorBaseNorm -> { lat, lng, display }
@@ -17,7 +16,16 @@ let alimentadorCenters = {};
 // alimentadorBaseNorm -> array de linhas (cada linha = [[lat,lng],...])
 let alimentadorLines = {};
 
-const KML_PATH = 'assets/doc.kml';
+// ====== REGIONAIS (KML/KMZ) ======
+const REGION_FILES = {
+  'TODOS': null,
+  'CENTRO NORTE': { type: 'kml', path: 'assets/doc.kml' },
+  'ATLANTICO': { type: 'kmz', path: 'assets/atlantico.kmz' },
+  'NORTE': { type: 'kmz', path: 'assets/norte.kmz' }
+};
+
+let currentRegion = 'TODOS';
+let regionGeoJSONCache = {}; // key -> geojson | null
 
 /* =========================
    HELPERS
@@ -34,6 +42,15 @@ function normKey(v) {
     .trim();
 }
 
+function normalizeRegionalKey(r) {
+  const v = String(r || '').trim().toUpperCase();
+  if (v === 'CENTRO NORTE' || v === 'CENTRO_NORTE' || v === 'CENTRONORTE') return 'CENTRO NORTE';
+  if (v === 'ATLANTICO' || v === 'ATLÂNTICO') return 'ATLANTICO';
+  if (v === 'NORTE') return 'NORTE';
+  if (v === 'TODOS') return 'TODOS';
+  return 'TODOS';
+}
+
 function extractAlimBase(name) {
   const n = normKey(name);
   const m = n.match(/([A-Z]{3}\s?\d{2})/);
@@ -47,21 +64,16 @@ function clamp(n, min, max) {
 
 function purgeAllHeatLayers() {
   if (!map) return;
-
-  // Remove qualquer heat layer que tenha ficado “órfão”
   Object.values(map._layers || {}).forEach(layer => {
-    // leaflet.heat cria layers com propriedade interna "_heat"
     if (layer && layer._heat) {
       try { map.removeLayer(layer); } catch (_) {}
     }
   });
 }
 
-
-/**
- * Paleta real de heat:
- * Azul → Verde → Amarelo → Laranja → Vermelho
- */
+/* =========================
+   Heat gradient / styles
+========================= */
 const HEAT_GRADIENT = {
   0.00: 'rgba(0, 60, 255, 0.45)',
   0.20: 'rgba(0, 180, 120, 0.65)',
@@ -70,7 +82,6 @@ const HEAT_GRADIENT = {
   1.00: 'rgba(200, 0, 0, 1.00)'
 };
 
-// stops para interpolar cor das LINHAS também
 const HEAT_STOPS = [
   { t: 0.00, rgb: [0, 80, 255] },
   { t: 0.25, rgb: [0, 200, 120] },
@@ -109,130 +120,77 @@ function lineStyleByIntensity(intensity, max) {
   };
 }
 
-// ✅ reforço de contraste do heatmap (fica mais “quente” sem zoom) — usar só no CONJUNTO
 function boostIntensity(intensity, maxCap) {
-  const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0; // 0..1
-  const y = Math.pow(x, 0.55); // <1 => enfatiza valores altos
+  const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0;
+  const y = Math.pow(x, 0.55);
   return y * maxCap;
 }
 
-/**
- * ✅ Normalização por modo:
- * - CONJUNTO: boost (pra aparecer mais quente no zoom aberto)
- * - ALIMENTADOR: compressão (pra NÃO deixar tudo vermelho)
- */
 function scaleIntensityForHeat(intensity, maxCap, currentMode) {
   const v = Number(intensity) || 0;
+  if (currentMode === 'CONJUNTO') return boostIntensity(v, maxCap);
 
-  if (currentMode === 'CONJUNTO') {
-    return boostIntensity(v, maxCap);
-  }
-
-  // ALIMENTADOR: comprime (gamma > 1 reduz saturação)
-  // Ex.: 10/50 continua baixo (azul/verde), 35/50 vira amarelo/laranja, 50 fica vermelho.
-  const x = maxCap > 0 ? clamp(v, 0, maxCap) / maxCap : 0; // 0..1
+  const x = maxCap > 0 ? clamp(v, 0, maxCap) / maxCap : 0;
   const gamma = 1.6;
   const y = Math.pow(x, gamma);
   return y * maxCap;
 }
 
 /* =========================
-   UI
+   REGION FILTER (GeoJSON point in polygon)
 ========================= */
-function ensureMapUI() {
-  if (uiMounted) return;
-  uiMounted = true;
+function pointInRing(point, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
 
-  const container = map.getContainer();
-  const wrap = document.createElement('div');
-  wrap.style.position = 'absolute';
-  wrap.style.top = '10px';
-  wrap.style.right = '10px';
-  wrap.style.zIndex = '800';
-  wrap.style.display = 'flex';
-  wrap.style.flexDirection = 'column';
-  wrap.style.gap = '8px';
+    const intersect =
+      ((yi > point[1]) !== (yj > point[1])) &&
+      (point[0] < (xj - xi) * (point[1] - yi) / ((yj - yi) || 1e-12) + xi);
 
-  const box = document.createElement('div');
-  box.style.background = 'rgba(255,255,255,0.92)';
-  box.style.border = '1px solid rgba(0,0,0,0.12)';
-  box.style.borderRadius = '10px';
-  box.style.padding = '10px';
-  box.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
-  box.style.fontFamily = 'Inter, system-ui, Arial';
-  box.style.fontSize = '12px';
-  box.style.fontWeight = '700';
-  box.innerHTML = `
-    <div style="margin-bottom:8px;">Mapa:</div>
-    <div style="display:flex; gap:6px;">
-      <button id="btnModeConj">Conjunto</button>
-      <button id="btnModeAlim">Alimentador</button>
-    </div>
-  `;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
-  const styleBtnBase =
-    'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:700;';
-  const styleActive = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
-  const styleInactive = 'background:#fff;color:#111;border-color:#ddd;';
+function pointInPolygon(point, polygonCoords) {
+  if (!polygonCoords || !polygonCoords.length) return false;
+  if (!pointInRing(point, polygonCoords[0])) return false;
+  for (let i = 1; i < polygonCoords.length; i++) {
+    if (pointInRing(point, polygonCoords[i])) return false;
+  }
+  return true;
+}
 
-  const legend = document.createElement('div');
-  legend.style.background = 'rgba(255,255,255,0.92)';
-  legend.style.border = '1px solid rgba(0,0,0,0.12)';
-  legend.style.borderRadius = '10px';
-  legend.style.padding = '10px';
-  legend.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
-  legend.style.fontFamily = 'Inter, system-ui, Arial';
-  legend.style.fontSize = '12px';
-  legend.style.fontWeight = '700';
-  legend.innerHTML = `
-    <div style="margin-bottom:8px;">Intensidade (0 → 50)</div>
-    <div style="height:10px;border-radius:8px;background: linear-gradient(90deg,
-      rgba(0,60,255,0.55),
-      rgba(0,180,120,0.65),
-      rgba(255,230,0,0.85),
-      rgba(255,140,0,0.95),
-      rgba(200,0,0,1.0)
-    );"></div>
-    <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:800;">
-      <span>0</span><span>50+</span>
-    </div>
-    <div style="margin-top:6px;font-weight:600;opacity:.85;">
-      Quanto mais perto de 50, mais “quente”.
-    </div>
-  `;
+function pointInGeoJSON(lat, lng, geojson) {
+  if (!geojson) return true;
+  const point = [lng, lat];
 
-  wrap.appendChild(box);
-  wrap.appendChild(legend);
-  container.appendChild(wrap);
+  const features = geojson.type === 'FeatureCollection'
+    ? geojson.features
+    : (geojson.type === 'Feature' ? [geojson] : []);
 
-  const btnConj = box.querySelector('#btnModeConj');
-  const btnAlim = box.querySelector('#btnModeAlim');
+  for (const f of features) {
+    const g = f.geometry;
+    if (!g) continue;
 
-  const paintButtons = () => {
-    btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
-    btnAlim.style.cssText = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive);
-  };
-
-  btnConj.addEventListener('click', async () => {
-    if (mode === 'CONJUNTO') return;
-    mode = 'CONJUNTO';
-    paintButtons();
-    await updateHeatmap(lastData);
-  });
-
-  btnAlim.addEventListener('click', async () => {
-    if (mode === 'ALIMENTADOR') return;
-    mode = 'ALIMENTADOR';
-    paintButtons();
-    await updateHeatmap(lastData);
-  });
-
-  paintButtons();
+    if (g.type === 'Polygon') {
+      if (pointInPolygon(point, g.coordinates)) return true;
+    } else if (g.type === 'MultiPolygon') {
+      for (const poly of g.coordinates) {
+        if (pointInPolygon(point, poly)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /* =========================
-   KML PARSER
+   KML (Alimentador lines) - usa doc.kml
 ========================= */
+const KML_PATH_ALIMENTADOR = 'assets/doc.kml';
+
 function parseKmlLinesToIndex(kmlText) {
   const parser = new DOMParser();
   const xml = parser.parseFromString(kmlText, 'text/xml');
@@ -294,11 +252,11 @@ function parseKmlLinesToIndex(kmlText) {
   return { centers, linesByBase };
 }
 
-async function loadKmlOnce() {
+async function loadAlimentadorKmlOnce() {
   if (Object.keys(alimentadorCenters).length > 0) return;
 
   try {
-    const res = await fetch(KML_PATH, { cache: 'no-store' });
+    const res = await fetch(KML_PATH_ALIMENTADOR, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
 
@@ -306,10 +264,197 @@ async function loadKmlOnce() {
     alimentadorCenters = centers;
     alimentadorLines = linesByBase;
   } catch (e) {
-    console.warn('[KML] Falha ao carregar KML:', e);
+    console.warn('[KML] Falha ao carregar KML alimentadores:', e);
     alimentadorCenters = {};
     alimentadorLines = {};
   }
+}
+
+/* =========================
+   REGION LOADER (KML / KMZ -> GeoJSON)
+========================= */
+function cacheHas(key) {
+  return Object.prototype.hasOwnProperty.call(regionGeoJSONCache, key);
+}
+
+async function loadRegionGeoJSON(regionKey) {
+  if (regionKey === 'TODOS') return null;
+
+  // ✅ cache correto (inclusive quando o valor cacheado é null)
+  if (cacheHas(regionKey)) return regionGeoJSONCache[regionKey];
+
+  const cfg = REGION_FILES[regionKey];
+  if (!cfg) {
+    regionGeoJSONCache[regionKey] = null;
+    return null;
+  }
+
+  try {
+    if (!window.toGeoJSON) throw new Error('toGeoJSON não encontrado (script não carregado).');
+
+    if (cfg.type === 'kml') {
+      const res = await fetch(cfg.path, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const kmlText = await res.text();
+
+      const parser = new DOMParser();
+      const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+      const geojson = window.toGeoJSON.kml(kmlDoc);
+
+      regionGeoJSONCache[regionKey] = geojson;
+      return geojson;
+    }
+
+    // KMZ
+    const res = await fetch(cfg.path, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+
+    if (!window.JSZip) throw new Error('JSZip não encontrado (adicione o script no index.html)');
+
+    const zip = await window.JSZip.loadAsync(buf);
+    const kmlFileName = Object.keys(zip.files).find(n => n.toLowerCase().endsWith('.kml'));
+    if (!kmlFileName) throw new Error('KMZ sem arquivo .kml interno');
+
+    const kmlText = await zip.files[kmlFileName].async('text');
+
+    const parser = new DOMParser();
+    const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+    const geojson = window.toGeoJSON.kml(kmlDoc);
+
+    regionGeoJSONCache[regionKey] = geojson;
+    return geojson;
+
+  } catch (e) {
+    console.warn(`[REGION] Falha ao carregar regional ${regionKey}:`, e);
+    regionGeoJSONCache[regionKey] = null;
+    return null;
+  }
+}
+
+function drawRegionBoundary(geojson, label) {
+  if (!map) return;
+
+  if (regionLayer) {
+    try { map.removeLayer(regionLayer); } catch (_) {}
+    regionLayer = null;
+  }
+
+  if (!geojson) return;
+
+  regionLayer = L.geoJSON(geojson, {
+    style: {
+      color: '#111',
+      weight: 2,
+      opacity: 0.9,
+      fillColor: '#111',
+      fillOpacity: 0.05
+    }
+  }).addTo(map);
+
+  regionLayer.bindPopup(`<strong>Regional:</strong> ${label}`);
+}
+
+/* =========================
+   UI (Somente Modo + Label regional)
+========================= */
+function ensureMapUI() {
+  if (uiMounted) return;
+  uiMounted = true;
+
+  const container = map.getContainer();
+  const wrap = document.createElement('div');
+  wrap.style.position = 'absolute';
+  wrap.style.top = '10px';
+  wrap.style.right = '10px';
+  wrap.style.zIndex = '800';
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.gap = '8px';
+
+  const box = document.createElement('div');
+  box.style.background = 'rgba(255,255,255,0.92)';
+  box.style.border = '1px solid rgba(0,0,0,0.12)';
+  box.style.borderRadius = '10px';
+  box.style.padding = '10px';
+  box.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+  box.style.fontFamily = 'Inter, system-ui, Arial';
+  box.style.fontSize = '12px';
+  box.style.fontWeight = '700';
+  box.innerHTML = `
+    <div style="margin-bottom:8px;">Mapa:</div>
+
+    <div style="display:flex; gap:6px;">
+      <button id="btnModeConj">Conjunto</button>
+      <button id="btnModeAlim">Alimentador</button>
+    </div>
+
+    <div style="margin-top:10px; font-size: 11px; color: #444; font-weight: 900;">
+      Regional: <span id="mapRegionalLabel">${currentRegion}</span>
+    </div>
+  `;
+
+  const styleBtnBase =
+    'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
+  const styleActive = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
+  const styleInactive = 'background:#fff;color:#111;border-color:#ddd;';
+
+  const legend = document.createElement('div');
+  legend.style.background = 'rgba(255,255,255,0.92)';
+  legend.style.border = '1px solid rgba(0,0,0,0.12)';
+  legend.style.borderRadius = '10px';
+  legend.style.padding = '10px';
+  legend.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+  legend.style.fontFamily = 'Inter, system-ui, Arial';
+  legend.style.fontSize = '12px';
+  legend.style.fontWeight = '700';
+  legend.innerHTML = `
+    <div style="margin-bottom:8px;">Intensidade (0 → 50)</div>
+    <div style="height:10px;border-radius:8px;background: linear-gradient(90deg,
+      rgba(0,60,255,0.55),
+      rgba(0,180,120,0.65),
+      rgba(255,230,0,0.85),
+      rgba(255,140,0,0.95),
+      rgba(200,0,0,1.0)
+    );"></div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;font-weight:900;">
+      <span>0</span><span>50+</span>
+    </div>
+  `;
+
+  wrap.appendChild(box);
+  wrap.appendChild(legend);
+  container.appendChild(wrap);
+
+  const btnConj = box.querySelector('#btnModeConj');
+  const btnAlim = box.querySelector('#btnModeAlim');
+
+  const paintButtons = () => {
+    btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
+    btnAlim.style.cssText = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive);
+  };
+
+  btnConj.addEventListener('click', async () => {
+    if (mode === 'CONJUNTO') return;
+    mode = 'CONJUNTO';
+    paintButtons();
+    await updateHeatmap(lastData);
+  });
+
+  btnAlim.addEventListener('click', async () => {
+    if (mode === 'ALIMENTADOR') return;
+    mode = 'ALIMENTADOR';
+    paintButtons();
+    await updateHeatmap(lastData);
+  });
+
+  paintButtons();
+}
+
+function updateMapRegionalLabel() {
+  if (!map) return;
+  const el = map.getContainer()?.querySelector('#mapRegionalLabel');
+  if (el) el.textContent = currentRegion;
 }
 
 /* =========================
@@ -328,13 +473,22 @@ export function initMap() {
   }).addTo(map);
 
   markersLayer = L.layerGroup().addTo(map);
-  kmlLayer = L.layerGroup().addTo(map);
+  linesLayer = L.layerGroup().addTo(map);
 
   ensureMapUI();
+  updateMapRegionalLabel();
+}
+
+/**
+ * ✅ Home controla a regional do mapa
+ * (NÃO faz render sozinho pra evitar duplicidade)
+ */
+export function setMapRegional(regional) {
+  currentRegion = normalizeRegionalKey(regional);
+  if (map) updateMapRegionalLabel();
 }
 
 export async function updateHeatmap(data) {
-  
   lastData = Array.isArray(data) ? data : [];
   const seq = ++renderSeq;
 
@@ -344,17 +498,26 @@ export async function updateHeatmap(data) {
   ensureMapUI();
   purgeAllHeatLayers();
 
-  await loadKmlOnce();
+  await loadAlimentadorKmlOnce();
   if (seq !== renderSeq) return;
 
-  // limpa layers
+  // limpar layers
   if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
   if (markersLayer) markersLayer.clearLayers();
-  if (kmlLayer) kmlLayer.clearLayers();
+  if (linesLayer) linesLayer.clearLayers();
 
+  // Regional: carregar e desenhar contorno
+  const regionGeo = await loadRegionGeoJSON(currentRegion);
+  if (seq !== renderSeq) return;
+
+  drawRegionBoundary(regionGeo, currentRegion);
+  updateMapRegionalLabel();
+
+  // ✅ Sem dados? Mesmo assim já desenhou a borda
   if (!lastData.length) return;
 
-  const points =
+  // gerar pontos do modo atual
+  let points =
     mode === 'ALIMENTADOR'
       ? generateHeatmapByAlimentador(lastData, alimentadorCenters)
       : generateHeatmapByConjunto(lastData);
@@ -362,11 +525,16 @@ export async function updateHeatmap(data) {
   if (seq !== renderSeq) return;
   if (!points.length) return;
 
-  const maxCap = 50;
+  // aplicar filtro por regional (se tiver geojson válido)
+  if (regionGeo) {
+    points = points.filter(p => pointInGeoJSON(p.lat, p.lng, regionGeo));
+    if (!points.length) {
+      console.warn('[REGION] Sem pontos dentro da regional selecionada:', currentRegion);
+      return;
+    }
+  }
 
-  // ✅ maxHeat por modo:
-  // - CONJUNTO: “aperta” a escala pra ficar mais quente no zoom aberto
-  // - ALIMENTADOR: NÃO apertar, senão satura tudo no vermelho
+  const maxCap = 50;
   const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
 
   const maxHeat =
@@ -374,7 +542,6 @@ export async function updateHeatmap(data) {
       ? clamp(Math.round(maxObserved * 0.35), 12, maxCap)
       : maxCap;
 
-  // ✅ heatPoints por modo (CONJUNTO = boost / ALIMENTADOR = compressão)
   const heatPoints = points.map(p => [
     p.lat,
     p.lng,
@@ -390,7 +557,7 @@ export async function updateHeatmap(data) {
     gradient: HEAT_GRADIENT
   }).addTo(map);
 
-  // markers (deixa mais discreto pra enfatizar o heat)
+  // markers
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
       radius: mode === 'ALIMENTADOR' ? 5 : 6,
@@ -403,7 +570,7 @@ export async function updateHeatmap(data) {
       .addTo(markersLayer);
   }
 
-  // linhas KML (modo ALIMENTADOR) — cor baseada em 0..50 (mesma legenda)
+  // linhas KML (modo ALIMENTADOR)
   if (mode === 'ALIMENTADOR') {
     const intensityByBase = new Map();
     for (const p of points) {
@@ -416,16 +583,20 @@ export async function updateHeatmap(data) {
       const intensity = intensityByBase.get(baseKey) || 0;
       if (intensity <= 0) continue;
 
-      // ✅ usa maxCap (0..50) pra casar com legenda/gradiente
       const style = lineStyleByIntensity(intensity, maxCap);
 
       for (const latlngs of lines) {
+        if (regionGeo) {
+          const anyInside = latlngs.some(([lat, lng]) => pointInGeoJSON(lat, lng, regionGeo));
+          if (!anyInside) continue;
+        }
+
         L.polyline(latlngs, style)
           .bindPopup(
             `<strong>${alimentadorCenters[baseKey]?.display || baseKey}</strong><br>
              Intensidade: <b>${intensity}</b>`
           )
-          .addTo(kmlLayer);
+          .addTo(linesLayer);
         drawn++;
       }
     }
@@ -434,5 +605,17 @@ export async function updateHeatmap(data) {
   }
 
   if (seq !== renderSeq) return;
-  map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40] });
+
+  // zoom para pontos (e respeita contorno quando existir)
+  const boundsPts = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+  if (regionLayer) {
+    try {
+      const boundsRegion = regionLayer.getBounds();
+      map.fitBounds(boundsRegion.isValid() ? boundsRegion : boundsPts, { padding: [40, 40] });
+    } catch (_) {
+      map.fitBounds(boundsPts, { padding: [40, 40] });
+    }
+  } else {
+    map.fitBounds(boundsPts, { padding: [40, 40] });
+  }
 }

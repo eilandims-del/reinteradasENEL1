@@ -2,59 +2,54 @@
  * Componente Ranking - Exibição e gerenciamento de rankings
  */
 
-import { generateRankingElemento } from '../services/data-service.js';
 import { openModal, fillDetailsModal } from './modal.js';
 import { formatDate } from '../utils/helpers.js';
 
 let currentRankingData = [];
-let allData = [];
 let currentElementoFilter = 'TODOS'; // 'TODOS' | 'TRAFO' | 'FUSIVEL' | 'RELIGADOR'
 let elementoSearchTerm = ''; // texto de busca (normalizado)
+
 let currentRankingCausaData = [];
 let currentRankingAlimentadorData = [];
 
-/* ============================
-   ✅ NOVO: base “real” do ranking (visão atual)
-   - retorna as ocorrências que estão por trás do ranking exibido (após filtro + busca)
-   ============================ */
-function getOcorrenciasFromRankingView(rankingView) {
-  const rows = [];
-  for (const item of (rankingView || [])) {
-    const ocorrs = Array.isArray(item?.ocorrencias) ? item.ocorrencias : [];
-    rows.push(...ocorrs);
-  }
-  return rows;
+// ✅ Regra de negócio: "Reiterada" = elemento aparece 2+ vezes
+const MIN_REPEAT_COUNT = 2;
+
+/* =========================
+   Utilidades (chave/campo)
+========================= */
+function normalizeKey(k) {
+  return String(k || '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
 }
 
-/**
- * ✅ EXPORT: use no main.js para atualizar os cards (charts)
- * com base no Ranking Elemento atual (filtro + busca)
- */
-export function getRankingViewRows() {
-  const view = getFilteredRanking(currentRankingData || []);
-  return getOcorrenciasFromRankingView(view);
+function getFieldValue(row, fieldName) {
+  if (!row) return '';
+
+  if (row[fieldName] != null) return row[fieldName];
+
+  // tenta também sem ponto
+  const noDot = String(fieldName).replace(/\./g, '');
+  if (row[noDot] != null) return row[noDot];
+
+  // tenta por normalização
+  const target = normalizeKey(fieldName);
+  const foundKey = Object.keys(row).find(k => normalizeKey(k) === target);
+  if (foundKey) return row[foundKey];
+
+  return '';
 }
 
-export function renderRankingCausa(data){
-  const ranking = generateRankingByField(data, 'CAUSA');
-  currentRankingCausaData = ranking;
-  renderRankingGeneric('rankingCausa', ranking, (name, ocorrencias) => openGenericDetails('CAUSA', name, ocorrencias));
+function sanitizeOneLine(v) {
+  return String(v ?? '')
+    .replace(/\s+/g, ' ')
+    .replace(/\n/g, ' ')
+    .trim();
 }
 
-export function renderRankingAlimentador(data){
-  const ranking = generateRankingByField(data, 'ALIMENT.');
-  currentRankingAlimentadorData = ranking;
-  renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) => openGenericDetails('ALIMENTADOR', name, ocorrencias));
-}
-
-export function setElementoFilter(filter) {
-  currentElementoFilter = String(filter || '').toUpperCase();
-  renderRankingList(getFilteredRanking(currentRankingData));
-}
-
-export function setElementoSearch(term) {
-  elementoSearchTerm = String(term || '').trim().toUpperCase();
-  renderRankingList(getFilteredRanking(currentRankingData));
+function getRegionalLabel() {
+  const el = document.getElementById('regionalAtualLabel');
+  const txt = sanitizeOneLine(el?.textContent || '');
+  return txt && txt !== '—' ? txt : '—';
 }
 
 /**
@@ -71,10 +66,40 @@ function getElementoTipo(elemento) {
   return 'RELIGADOR';
 }
 
+/* =========================
+   ✅ Ranking por ELEMENTO (robusto)
+   - lê coluna ELEMENTO (com variações)
+   - agrega ocorrências
+   - filtra reiteradas (count >= 2)
+   - ordena por count desc
+========================= */
+function generateRankingElemento(data) {
+  const counts = new Map();
+  const ocorrMap = new Map();
+
+  for (const row of (data || [])) {
+    const elementoRaw = String(getFieldValue(row, 'ELEMENTO') || '').trim();
+    if (!elementoRaw) continue;
+
+    counts.set(elementoRaw, (counts.get(elementoRaw) || 0) + 1);
+
+    if (!ocorrMap.has(elementoRaw)) ocorrMap.set(elementoRaw, []);
+    ocorrMap.get(elementoRaw).push(row);
+  }
+
+  return Array.from(counts.entries())
+    .map(([elemento, count]) => ({ elemento, count, ocorrencias: ocorrMap.get(elemento) }))
+    .filter(x => (Number(x.count) || 0) >= MIN_REPEAT_COUNT) // ✅ só reiteradas
+    .sort((a, b) => b.count - a.count);
+}
+
+/* =========================
+   ✅ Visão atual (filtro + busca)
+========================= */
 function getFilteredRanking(ranking) {
   const normalize = (v) => String(v || '').trim().toUpperCase();
 
-  let result = ranking.filter(item => {
+  let result = (ranking || []).filter(item => {
     const el = normalize(item.elemento);
     const tipo = getElementoTipo(el);
 
@@ -92,47 +117,95 @@ function getFilteredRanking(ranking) {
   return result;
 }
 
+function getOcorrenciasFromRankingView(rankingView) {
+  const rows = [];
+  for (const item of (rankingView || [])) {
+    const ocorrs = Array.isArray(item?.ocorrencias) ? item.ocorrencias : [];
+    rows.push(...ocorrs);
+  }
+  return rows;
+}
+
 /**
- * Total do ranking (clicável para exportar Excel)
+ * ✅ EXPORT: use no main.js para atualizar charts/map
+ * com base no Ranking Elemento atual (filtro + busca)
  */
-function updateRankingTotal(ranking) {
+export function getRankingViewRows() {
+  const view = getFilteredRanking(currentRankingData || []);
+  return getOcorrenciasFromRankingView(view);
+}
+
+/* =========================
+   Ranking por CAUSA / ALIMENTADOR (genérico)
+========================= */
+export function renderRankingCausa(data) {
+  const ranking = generateRankingByField(data, 'CAUSA');
+  currentRankingCausaData = ranking;
+  renderRankingGeneric('rankingCausa', ranking, (name, ocorrencias) => openGenericDetails('CAUSA', name, ocorrencias));
+}
+
+export function renderRankingAlimentador(data) {
+  const ranking = generateRankingByField(data, 'ALIMENT.');
+  currentRankingAlimentadorData = ranking;
+  renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) => openGenericDetails('ALIMENTADOR', name, ocorrencias));
+}
+
+/* =========================
+   Setters (chamados pelo main.js)
+========================= */
+export function setElementoFilter(filter) {
+  currentElementoFilter = String(filter || '').toUpperCase();
+  renderRankingList(getFilteredRanking(currentRankingData || []));
+}
+
+export function setElementoSearch(term) {
+  elementoSearchTerm = String(term || '').trim().toUpperCase();
+  renderRankingList(getFilteredRanking(currentRankingData || []));
+}
+
+/* =========================
+   Total / Export
+========================= */
+function updateRankingTotal(rankingView) {
   const el = document.getElementById('rankingElementoTotal');
   if (!el) return;
 
-  const total = Array.isArray(ranking) ? ranking.length : 0;
-  el.textContent = `Reiteradas: ${total}`;
+  const totalElementos = Array.isArray(rankingView) ? rankingView.length : 0;
+  const totalOcorrencias = Array.isArray(rankingView)
+    ? rankingView.reduce((sum, it) => sum + (Number(it?.count) || 0), 0)
+    : 0;
 
-  // Visual/UX
+  el.textContent = `Reiteradas: ${totalElementos} | Ocorr.: ${totalOcorrencias}`;
+
   el.style.cursor = 'pointer';
-  el.title = 'Clique para baixar Excel (ELEMENTO / DATA / ALIMENTADOR / INCIDÊNCIA)';
+  el.title = 'Clique para baixar Excel da visão atual (ELEMENTO / DATA / ALIMENTADOR / INCIDÊNCIA)';
 
-  // Evita múltiplos listeners
   if (el.__exportRankingClick) {
     el.removeEventListener('click', el.__exportRankingClick);
     el.__exportRankingClick = null;
   }
 
-  const onClick = () => exportRankingElementoToExcel(ranking);
+  const onClick = () => exportRankingElementoToExcel(rankingView);
   el.__exportRankingClick = onClick;
   el.addEventListener('click', onClick);
 }
 
-function renderRankingList(ranking) {
+function renderRankingList(rankingView) {
   const container = document.getElementById('rankingElemento');
   if (!container) return;
 
-  // Atualiza total SEMPRE (mesmo vazio)
-  updateRankingTotal(ranking);
+  updateRankingTotal(rankingView);
 
-  if (ranking.length === 0) {
-    container.innerHTML = '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum elemento encontrado para este filtro.</p>';
+  if (!rankingView || rankingView.length === 0) {
+    container.innerHTML =
+      `<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">
+        Nenhum elemento reiterado (≥ ${MIN_REPEAT_COUNT}) para este filtro/busca.
+      </p>`;
     return;
   }
 
   const INITIAL_DISPLAY = 100;
   const BATCH_SIZE = 50;
-
-  // threshold para iniciar carregamento antes de chegar no fim
   const SCROLL_THRESHOLD_PX = 120;
 
   container.innerHTML = '';
@@ -140,8 +213,9 @@ function renderRankingList(ranking) {
   const renderBatch = (startIndex, endIndex) => {
     return new Promise(resolve => {
       requestAnimationFrame(() => {
-        for (let i = startIndex; i < endIndex && i < ranking.length; i++) {
-          const item = ranking[i];
+        for (let i = startIndex; i < endIndex && i < rankingView.length; i++) {
+          const item = rankingView[i];
+
           const itemDiv = document.createElement('div');
           itemDiv.className = 'ranking-item';
           itemDiv.onclick = () => openElementDetails(item.elemento, item.ocorrencias);
@@ -168,11 +242,9 @@ function renderRankingList(ranking) {
     });
   };
 
-  // Estado do carregamento incremental
   let currentEnd = 0;
   let isLoading = false;
 
-  // Remove listeners antigos para evitar duplicidade quando troca filtro/busca
   if (container.__onRankingScroll) {
     container.removeEventListener('scroll', container.__onRankingScroll);
     container.__onRankingScroll = null;
@@ -180,20 +252,19 @@ function renderRankingList(ranking) {
 
   const loadMoreIfNeeded = async () => {
     if (isLoading) return;
-    if (currentEnd >= ranking.length) return;
+    if (currentEnd >= rankingView.length) return;
 
     isLoading = true;
 
-    const nextEnd = Math.min(currentEnd + BATCH_SIZE, ranking.length);
+    const nextEnd = Math.min(currentEnd + BATCH_SIZE, rankingView.length);
     await renderBatch(currentEnd, nextEnd);
     currentEnd = nextEnd;
 
     isLoading = false;
   };
 
-  // Handler de scroll com gatilho no final
   const onScroll = async () => {
-    if (currentEnd >= ranking.length) return;
+    if (currentEnd >= rankingView.length) return;
 
     const nearBottom =
       container.scrollTop + container.clientHeight >= (container.scrollHeight - SCROLL_THRESHOLD_PX);
@@ -203,35 +274,41 @@ function renderRankingList(ranking) {
     }
   };
 
-  // Guarda referência para remover corretamente em renderizações futuras
   container.__onRankingScroll = onScroll;
   container.addEventListener('scroll', onScroll, { passive: true });
 
-  // 1) Render inicial (até INITIAL_DISPLAY)
-  const firstEnd = Math.min(INITIAL_DISPLAY, ranking.length);
+  const firstEnd = Math.min(INITIAL_DISPLAY, rankingView.length);
   renderBatch(0, firstEnd).then(async () => {
     currentEnd = firstEnd;
 
-    // 2) Se ainda não gerou scroll (tela grande), completa automaticamente
-    while (currentEnd < ranking.length && container.scrollHeight <= container.clientHeight) {
+    while (currentEnd < rankingView.length && container.scrollHeight <= container.clientHeight) {
       await loadMoreIfNeeded();
     }
   });
 }
 
-/**
- * Renderizar ranking por ELEMENTO
- */
+/* =========================
+   Render ranking por ELEMENTO
+========================= */
 export function renderRankingElemento(data) {
-  allData = data;
-
-  const ranking = generateRankingElemento(data);
+  const ranking = generateRankingElemento(data || []);
   currentRankingData = ranking;
 
-  const filtered = getFilteredRanking(ranking);
-  renderRankingList(filtered);
+  const view = getFilteredRanking(ranking);
+  renderRankingList(view);
 }
 
+/**
+ * ✅ Atualizar ranking com novos dados
+ * charts/map serão atualizados pelo main.js usando getRankingViewRows()
+ */
+export function updateRanking(data) {
+  renderRankingElemento(data);
+}
+
+/* =========================
+   Detalhes / Modal
+========================= */
 function openGenericDetails(tipo, nome, ocorrencias) {
   const modalTitle = document.getElementById('detalhesTitulo');
   if (modalTitle) modalTitle.textContent = `${tipo}: ${nome}`;
@@ -241,52 +318,47 @@ function openGenericDetails(tipo, nome, ocorrencias) {
 
   if (modalContent && modalContent.dataset.selectedColumns) {
     try { selectedColumns = JSON.parse(modalContent.dataset.selectedColumns); }
-    catch (e) { selectedColumns = []; }
+    catch (_) { selectedColumns = []; }
   }
 
   fillDetailsModal(nome, ocorrencias, selectedColumns);
   openModal('modalDetalhes');
 }
 
-/**
- * Abrir detalhes de um elemento
- */
 function openElementDetails(elemento, ocorrencias) {
   const modalContent = document.getElementById('detalhesConteudo');
   let selectedColumns = [];
 
   if (modalContent && modalContent.dataset.selectedColumns) {
-    try {
-      selectedColumns = JSON.parse(modalContent.dataset.selectedColumns);
-    } catch (e) {
-      selectedColumns = [];
-    }
+    try { selectedColumns = JSON.parse(modalContent.dataset.selectedColumns); }
+    catch (_) { selectedColumns = []; }
   }
 
   fillDetailsModal(elemento, ocorrencias, selectedColumns);
   openModal('modalDetalhes');
 }
 
-/**
- * Gerar texto do ranking para copiar (WhatsApp) - mais friendly
- */
+/* =========================
+   Texto para copiar (WhatsApp)
+========================= */
 export function generateRankingText() {
-  console.log('[COPIAR] generateRankingText ✅', { currentElementoFilter, elementoSearchTerm });
-
   if (!currentRankingData.length) return '⚠️ Nenhum ranking disponível no momento.';
 
   const view = getFilteredRanking(currentRankingData);
+
+  const regional = getRegionalLabel();
 
   if (!view.length) {
     return [
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       '📋 *RELATÓRIO DE REITERADAS*',
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+      `🗺️ Regional: *${regional}*`,
       `🧩 Tipo: *${getFiltroLabel(currentElementoFilter)}*`,
       `📅 Período: ${getPeriodoLabel()}`,
       elementoSearchTerm ? `🔎 Busca: *${elementoSearchTerm}*` : '',
       '',
-      '😕 Nenhum elemento encontrado para o filtro atual.',
+      `😕 Nenhum elemento reiterado (≥ ${MIN_REPEAT_COUNT}) para o filtro/busca atual.`,
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
       '',
       '🔗 *Ver mais detalhes:*',
@@ -302,6 +374,7 @@ export function generateRankingText() {
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   linhas.push('📋 *RELATÓRIO DE REITERADAS*');
   linhas.push('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  linhas.push(`🗺️ Regional: *${regional}*`);
   linhas.push(`🧩 Tipo: *${getFiltroLabel(currentElementoFilter)}*`);
   linhas.push(`📅 Período: ${getPeriodoLabel()}`);
   if (elementoSearchTerm) linhas.push(`🔎 Busca: *${elementoSearchTerm}*`);
@@ -333,18 +406,15 @@ export function generateRankingText() {
     sliced.forEach((item) => {
       const total = Number(item.count) || 0;
 
-      // Alimentador (mais frequente nas ocorrências)
       const alimentador = getMostFrequentField(item.ocorrencias || [], 'ALIMENT.');
       const alimentadorStr = alimentador ? sanitizeOneLine(alimentador) : 'Não informado';
 
-      // Todas as causas (únicas, por frequência)
       const causasStr = getAllCausesLine(item.ocorrencias || []);
 
       linhas.push(`*${String(globalIndex).padStart(2, '0')})* ${sanitizeOneLine(item.elemento)}  *(${total} vezes)*`);
       linhas.push(`   ├─ 🧭 Alimentador: ${alimentadorStr}`);
       linhas.push(`   └─ 🧾 Causas: ${causasStr}`);
       linhas.push('');
-
       globalIndex += 1;
     });
 
@@ -361,7 +431,6 @@ export function generateRankingText() {
     renderSecao('FUSÍVEL', fus);
     renderSecao('RELIGADOR', rel);
 
-    // OBS individuais quando alguma seção não tiver ocorrência
     const obs = [];
     if (!trafos.length) obs.push('🔌 Não reiterou nenhum *TRAFO*');
     if (!fus.length) obs.push('💡 Não reiterou nenhum *FUSÍVEL*');
@@ -422,59 +491,17 @@ function getPeriodoLabel() {
   if (di && df) return `*${fmt(di)}* até *${fmt(df)}*`;
   if (di && !df) return `a partir de *${fmt(di)}*`;
   if (!di && df) return `até *${fmt(df)}*`;
-  return '*Todos os registros (sem filtro de data)*';
+  return '*Sem filtro de data*';
 }
 
-function sanitizeOneLine(v) {
-  return String(v ?? '')
-    .replace(/\s+/g, ' ')
-    .replace(/\n/g, ' ')
-    .trim();
-}
-
-/**
- * ✅ Atualizar ranking com novos dados
- * IMPORTANTE:
- * - NÃO chama charts aqui
- * - charts será atualizado pelo main.js usando getRankingViewRows()
- */
-export function updateRanking(data) {
-  renderRankingElemento(data);
-}
-
-/* ============================
-   Helpers (ranking genérico)
-   ============================ */
-
-function normalizeKey(k) {
-  return String(k || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\./g, '');
-}
-
-function getFieldValue(row, fieldName) {
-  if (!row) return '';
-
-  if (row[fieldName] != null) return row[fieldName];
-
-  // tenta também sem ponto
-  const noDot = String(fieldName).replace(/\./g, '');
-  if (row[noDot] != null) return row[noDot];
-
-  // tenta por normalização
-  const target = normalizeKey(fieldName);
-  const foundKey = Object.keys(row).find(k => normalizeKey(k) === target);
-  if (foundKey) return row[foundKey];
-
-  return '';
-}
-
+/* =========================
+   Helpers ranking genérico
+========================= */
 function generateRankingByField(data, field) {
   const counts = new Map();
   const ocorrenciasMap = new Map();
 
-  data.forEach(row => {
+  (data || []).forEach(row => {
     const value = String(getFieldValue(row, field) || '').trim();
     if (!value) return;
 
@@ -489,9 +516,6 @@ function generateRankingByField(data, field) {
     .sort((a, b) => b.count - a.count);
 }
 
-/**
- * Retorna o valor mais frequente de um campo em ocorrências (ex.: ALIMENT.)
- */
 function getMostFrequentField(ocorrencias, fieldName) {
   if (!Array.isArray(ocorrencias) || !ocorrencias.length) return '';
 
@@ -516,9 +540,6 @@ function getMostFrequentField(ocorrencias, fieldName) {
   return best;
 }
 
-/**
- * Monta uma linha com TODAS as causas únicas, ordenadas por frequência.
- */
 function getAllCausesLine(ocorrencias) {
   if (!Array.isArray(ocorrencias) || !ocorrencias.length) return 'Não informado';
 
@@ -572,10 +593,9 @@ function renderRankingGeneric(containerId, ranking, onClick) {
   });
 }
 
-/* ============================
+/* =========================
    EXPORT EXCEL - RANKING ELEMENTO
-   ============================ */
-
+========================= */
 function getValueSmartRow(obj, key) {
   if (!obj) return '';
 
@@ -641,7 +661,6 @@ function exportRankingElementoToExcel(rankingView) {
     return;
   }
 
-  // Ordena por ELEMENTO e DATA (opcional)
   rows.sort((a, b) => {
     const ea = a.ELEMENTO.localeCompare(b.ELEMENTO);
     if (ea !== 0) return ea;
@@ -653,10 +672,10 @@ function exportRankingElementoToExcel(rankingView) {
   });
 
   ws['!cols'] = [
-    { wch: 22 }, // ELEMENTO
-    { wch: 12 }, // DATA
-    { wch: 18 }, // ALIMENTADOR
-    { wch: 14 }, // INCIDÊNCIA
+    { wch: 22 },
+    { wch: 12 },
+    { wch: 18 },
+    { wch: 14 },
   ];
 
   const wb = window.XLSX.utils.book_new();
@@ -675,7 +694,9 @@ function exportRankingElementoToExcel(rankingView) {
     (!di && df) ? `ate_${df}` :
     'sem_filtro_data';
 
-  const fileName = `Ranking_Elemento_${periodo}_${stamp}.xlsx`;
+  const regional = getRegionalLabel().replace(/\s+/g, '_');
+
+  const fileName = `Ranking_Elemento_${regional}_${periodo}_${stamp}.xlsx`;
 
   window.XLSX.writeFile(wb, fileName);
 }

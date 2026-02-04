@@ -4,14 +4,29 @@
 
 import { DataService } from './services/firebase-service.js';
 import { getAllColumns, getOcorrenciasByElemento } from './services/data-service.js';
-import { updateRanking, generateRankingText, setElementoFilter, setElementoSearch, getRankingViewRows } from './components/ranking.js';
+import {
+  updateRanking,
+  generateRankingText,
+  setElementoFilter,
+  setElementoSearch,
+  getRankingViewRows
+} from './components/ranking.js';
 import { updateCharts } from './components/charts.js';
-import { updateHeatmap, initMap } from './components/mapa.js';
-import { openModal, closeModal, initModalEvents, fillDetailsModal, exportDetailsToExcel } from './components/modal.js';
+import { updateHeatmap, initMap, setMapRegional } from './components/mapa.js';
+import {
+  openModal,
+  closeModal,
+  initModalEvents,
+  fillDetailsModal,
+  exportDetailsToExcel
+} from './components/modal.js';
 import { copyToClipboard, showToast, debounce } from './utils/helpers.js';
 
 let currentData = [];
 let selectedAdditionalColumns = [];
+
+// ✅ Regional selecionada (obrigatório para carregar)
+let selectedRegional = ''; // 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
 
 /**
  * Inicializar aplicação
@@ -21,16 +36,50 @@ async function init() {
   initEventListeners();
   initMap();
 
-  // Economia: não carrega tudo no F5
+  // estado inicial
   renderEmptyState();
+  setRegionalUI('');
+  setMapRegional('TODOS'); // mapa inicia sem recorte
+  await updateHeatmap([]); // desenha estado inicial do mapa (sem dados)
 }
 
+/**
+ * Empty state (não carrega nada no F5)
+ */
 function renderEmptyState() {
   const rankingContainer = document.getElementById('rankingElemento');
+
   if (rankingContainer) {
     rankingContainer.innerHTML =
-      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Selecione um período e clique em <b>Aplicar Filtro</b> para carregar os dados.</p>';
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Selecione uma <b>Regional</b> e um <b>período</b>, depois clique em <b>Aplicar</b> para carregar os dados.</p>';
   }
+
+  try { updateCharts([]); } catch (_) {}
+  try { updateHeatmap([]); } catch (_) {}
+
+  // reset total do ranking
+  const totalEl = document.getElementById('rankingElementoTotal');
+  if (totalEl) totalEl.textContent = 'Reiteradas: 0';
+}
+
+/**
+ * UI Regional (Home)
+ */
+function setRegionalUI(regional) {
+  selectedRegional = regional;
+
+  const btnAtl = document.getElementById('btnRegionalAtlantico');
+  const btnNor = document.getElementById('btnRegionalNorte');
+  const btnCN = document.getElementById('btnRegionalCentroNorte');
+
+  [btnAtl, btnNor, btnCN].forEach(b => b?.classList.remove('active'));
+
+  if (regional === 'ATLANTICO') btnAtl?.classList.add('active');
+  if (regional === 'NORTE') btnNor?.classList.add('active');
+  if (regional === 'CENTRO NORTE') btnCN?.classList.add('active');
+
+  const label = document.getElementById('regionalAtualLabel');
+  if (label) label.textContent = regional ? regional : '—';
 }
 
 /**
@@ -55,6 +104,41 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFilters);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
+  // ✅ Regional (Home)
+  document.getElementById('btnRegionalAtlantico')?.addEventListener('click', async () => {
+    setRegionalUI('ATLANTICO');
+
+    // mapa muda o recorte/borda
+    setMapRegional('ATLANTICO');
+    await updateHeatmap([]); // desenha só a borda (sem pontos)
+
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: ATLANTICO. Selecione o período e clique em Aplicar.', 'success');
+  });
+
+  document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {
+    setRegionalUI('NORTE');
+
+    setMapRegional('NORTE');
+    await updateHeatmap([]);
+
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: NORTE. Selecione o período e clique em Aplicar.', 'success');
+  });
+
+  document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', async () => {
+    setRegionalUI('CENTRO NORTE');
+
+    setMapRegional('CENTRO NORTE');
+    await updateHeatmap([]);
+
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: CENTRO NORTE. Selecione o período e clique em Aplicar.', 'success');
+  });
+
   // Copiar ranking (ELEMENTO)
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
     const text = generateRankingText();
@@ -73,55 +157,42 @@ function initEventListeners() {
     activeBtn?.classList.add('active');
   };
 
-  btnTodos?.addEventListener('click', () => {
-    setElementoFilter('TODOS');
-    setActive(btnTodos);
-
+  const rerenderFromRankingView = () => {
     if (!currentData.length) return;
-
     const rows = getRankingViewRows();
     updateCharts(rows);
     updateHeatmap(rows);
+  };
+
+  btnTodos?.addEventListener('click', () => {
+    setElementoFilter('TODOS');
+    setActive(btnTodos);
+    rerenderFromRankingView();
   });
 
   btnTrafo?.addEventListener('click', () => {
     setElementoFilter('TRAFO');
     setActive(btnTrafo);
-
-    if (!currentData.length) return;
-
-    const rows = getRankingViewRows();
-    updateCharts(rows);
-    updateHeatmap(rows);
+    rerenderFromRankingView();
   });
 
   btnFusivel?.addEventListener('click', () => {
     setElementoFilter('FUSIVEL');
     setActive(btnFusivel);
-
-    if (!currentData.length) return;
-
-    const rows = getRankingViewRows();
-    updateCharts(rows);
-    updateHeatmap(rows);
+    rerenderFromRankingView();
   });
 
   btnOutros?.addEventListener('click', () => {
     setElementoFilter('RELIGADOR');
     setActive(btnOutros);
-
-    if (!currentData.length) return;
-
-    const rows = getRankingViewRows();
-    updateCharts(rows);
-    updateHeatmap(rows);
+    rerenderFromRankingView();
   });
 
-  // estado inicial visual
+  // estado inicial ranking
   setElementoFilter('TODOS');
   setActive(btnTodos);
 
-  // busca com debounce
+  // busca
   const searchElemento = document.getElementById('searchElemento');
   const btnClearSearch = document.getElementById('btnClearSearchElemento');
 
@@ -133,25 +204,14 @@ function initEventListeners() {
 
     searchDebounce = setTimeout(() => {
       setElementoSearch(value);
-
-      if (!currentData.length) return;
-
-      const rows = getRankingViewRows();
-      updateCharts(rows);
-      updateHeatmap(rows);
+      rerenderFromRankingView();
     }, 180);
   });
 
   btnClearSearch?.addEventListener('click', () => {
     if (searchElemento) searchElemento.value = '';
     setElementoSearch('');
-
-    if (!currentData.length) return;
-
-    const rows = getRankingViewRows();
-    updateCharts(rows);
-    updateHeatmap(rows);
-
+    rerenderFromRankingView();
     searchElemento?.focus();
   });
 }
@@ -162,8 +222,6 @@ function initEventListeners() {
 function renderAll() {
   if (currentData.length === 0) return;
 
-  console.log(`[RENDER] Renderizando ${currentData.length} registros...`);
-
   // 1) Ranking elemento (define currentRankingData internamente)
   updateRanking(currentData);
 
@@ -171,12 +229,10 @@ function renderAll() {
   const rowsFromRankingView = getRankingViewRows();
   updateCharts(rowsFromRankingView);
   updateHeatmap(rowsFromRankingView);
-
-  console.log('[RENDER] Renderização iniciada');
 }
 
 /**
- * Carregar dados do Firestore PARA UM PERÍODO
+ * Carregar dados do Firestore PARA UM PERÍODO + REGIONAL
  */
 async function loadDataByPeriod(di, df) {
   const rankingContainer = document.getElementById('rankingElemento');
@@ -185,26 +241,33 @@ async function loadDataByPeriod(di, df) {
       '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando dados do período...</div>';
   }
 
-  const result = await DataService.getData({ dataInicial: di, dataFinal: df });
+  const result = await DataService.getData({
+    regional: selectedRegional,
+    dataInicial: di,
+    dataFinal: df
+  });
 
   if (result.success && result.data.length > 0) {
     currentData = result.data;
     renderAll();
-    showToast(`Filtro aplicado: ${currentData.length} registro(s) encontrado(s).`, 'success');
+    showToast(`Filtro aplicado (${selectedRegional}): ${currentData.length} registro(s).`, 'success');
   } else {
     currentData = [];
 
     if (rankingContainer) {
       rankingContainer.innerHTML =
-        '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum dado encontrado para o período informado.</p>';
+        '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Nenhum dado encontrado para o período informado nesta Regional.</p>';
     }
-    showToast('Nenhum dado encontrado para o período.', 'error');
+
+    updateCharts([]);
+    updateHeatmap([]);
+    showToast(`Nenhum dado encontrado (${selectedRegional}).`, 'error');
   }
 }
 
 /**
  * Aplicar filtros (com debounce)
- * Agora: carrega do Firestore por período (economia de leituras)
+ * ✅ exige: regional + data
  */
 const applyFiltersDebounced = debounce(async () => {
   const dataInicial = document.getElementById('dataInicial')?.value;
@@ -212,6 +275,11 @@ const applyFiltersDebounced = debounce(async () => {
 
   const di = dataInicial ? dataInicial.split('T')[0] : '';
   const df = dataFinal ? dataFinal.split('T')[0] : '';
+
+  if (!selectedRegional) {
+    showToast('Selecione uma Regional (ATLANTICO / NORTE / CENTRO NORTE) antes de aplicar.', 'error');
+    return;
+  }
 
   if (!di && !df) {
     showToast('Informe ao menos uma data (inicial ou final) para carregar.', 'error');
@@ -227,6 +295,7 @@ function applyFilters() {
 
 /**
  * Limpar filtros
+ * ✅ mantém regional selecionada, mas zera dados
  */
 function clearFilters() {
   const di = document.getElementById('dataInicial');
@@ -235,8 +304,13 @@ function clearFilters() {
   if (df) df.value = '';
 
   currentData = [];
+  selectedAdditionalColumns = [];
+
+  setElementoSearch('');
+  setElementoFilter('TODOS');
+
   renderEmptyState();
-  showToast('Filtros removidos. Selecione um período para carregar.', 'success');
+  showToast('Filtros removidos. Selecione o período e aplique novamente.', 'success');
 }
 
 /**
@@ -247,25 +321,16 @@ function openModalAddInfo() {
 
   // normalizado sem ponto, por isso ALIMENT (não ALIMENT.)
   const fixedColumns = ['INCIDENCIA', 'CAUSA', 'ALIMENT', 'DATA', 'ELEMENTO', 'CONJUNTO'];
-  // Colunas que NÃO devem aparecer no "Adicionar Info"
-  const hiddenCols = new Set([
-    'TMD',
-    'AVISOS',
-    'CHI',
-    'TMA',
-    'NT',
-    'DURACAO TOTAL'
-  ].map(c => c.trim().toUpperCase()));
+
+  const hiddenCols = new Set(['TMD', 'AVISOS', 'CHI', 'TMA', 'NT', 'DURACAO TOTAL'].map(c => c.trim().toUpperCase()));
 
   const nonFixedColumns = allColumns.filter(col => {
     const normalized = String(col).toUpperCase().trim().replace(/\./g, '');
 
-    // não mostrar colunas fixas
     if (fixedColumns.includes(normalized)) return false;
 
-    // não mostrar colunas bloqueadas (comparando também sem ponto)
     const normalizedNoDot = normalized.replace(/\./g, '');
-    const normalizedWithDotSafe = String(col).toUpperCase().trim(); // para nomes com espaço/ponto como "CLI. AFE"
+    const normalizedWithDotSafe = String(col).toUpperCase().trim();
 
     if (hiddenCols.has(normalizedWithDotSafe)) return false;
     if (hiddenCols.has(normalizedNoDot)) return false;
