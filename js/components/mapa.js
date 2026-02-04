@@ -8,6 +8,9 @@ let heatLayer;
 let markersLayer;
 let linesLayer;
 let regionLayer;
+let btnConjRef = null;
+let btnAlimRef = null;
+let legendMounted = false;
 
 let uiMounted = false;
 let mode = 'CONJUNTO'; // 'CONJUNTO' | 'ALIMENTADOR'
@@ -134,8 +137,8 @@ function lineStyleByIntensity(intensity, max) {
 
   return {
     color: colorFromIntensity(intensity, max, 0.85),
-    weight: 1.1 + 3.2 * t,  // ✅ evita “massa preta”
-    opacity: 0.70
+    weight: 0.9 + 2.2 * t,   // mais fino
+    opacity: 0.45            // menos escuro na sobreposição    
   };
 }
 
@@ -447,6 +450,39 @@ function ensureMapUI() {
 
   const btnConj = box.querySelector('#btnModeConj');
   const btnAlim = box.querySelector('#btnModeAlim');
+  
+  btnConjRef = btnConj;
+  btnAlimRef = btnAlim;
+  
+  // ✅ Legenda 0 → 50+ (azul → vermelho)
+if (!legendMounted) {
+  legendMounted = true;
+
+  const legend = document.createElement('div');
+  legend.style.marginTop = '10px';
+  legend.style.paddingTop = '10px';
+  legend.style.borderTop = '1px solid rgba(0,0,0,0.10)';
+  legend.innerHTML = `
+    <div style="font-size:11px; font-weight:900; margin-bottom:6px;">Intensidade</div>
+    <div style="
+      height:10px;
+      border-radius:999px;
+      background: linear-gradient(90deg,
+        ${HEAT_GRADIENT[0.00]},
+        ${HEAT_GRADIENT[0.25]},
+        ${HEAT_GRADIENT[0.50]},
+        ${HEAT_GRADIENT[0.75]},
+        ${HEAT_GRADIENT[1.00]}
+      );
+      border: 1px solid rgba(0,0,0,0.12);
+    "></div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:11px; color:#111; font-weight:900;">
+      <span>0</span>
+      <span>50+</span>
+    </div>
+  `;
+  box.appendChild(legend);
+}
 
   const paintButtons = () => {
     btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
@@ -506,6 +542,33 @@ export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
   if (map) updateMapRegionalLabel();
 }
+export function resetMap() {
+  lastData = [];
+
+  if (!map) initMap();
+  if (!map) return;
+
+  // volta pro padrão: CONJUNTO
+  mode = 'CONJUNTO';
+
+  // limpa tudo
+  purgeAllHeatLayers();
+
+  if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
+  if (markersLayer) markersLayer.clearLayers();
+  if (linesLayer) linesLayer.clearLayers();
+
+  if (regionLayer) { try { map.removeLayer(regionLayer); } catch (_) {} regionLayer = null; }
+
+  // repinta botões (se UI já montada)
+  if (btnConjRef && btnAlimRef) {
+    const base = 'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
+    const active = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
+    const inactive = 'background:#fff;color:#111;border-color:#ddd;';
+    btnConjRef.style.cssText = base + active;
+    btnAlimRef.style.cssText = base + inactive;
+  }
+}
 
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
@@ -516,12 +579,6 @@ export async function updateHeatmap(data) {
 
   ensureMapUI();
   purgeAllHeatLayers();
-
-  // ✅ Carrega KML apenas quando realmente for desenhar ALIMENTADOR
-  if (mode === 'ALIMENTADOR') {
-    await loadAlimentadorKmlOnce();
-    if (seq !== renderSeq) return;
-  }
 
   // limpar layers
   if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
@@ -537,6 +594,12 @@ export async function updateHeatmap(data) {
 
   // Sem dados: só borda
   if (!lastData.length) return;
+
+  // ✅ Carrega KML apenas quando realmente for desenhar ALIMENTADOR
+  if (mode === 'ALIMENTADOR') {
+    await loadAlimentadorKmlOnce();
+    if (seq !== renderSeq) return;
+  }
 
   // gerar pontos (sempre) para markers / intensidade
   let points =

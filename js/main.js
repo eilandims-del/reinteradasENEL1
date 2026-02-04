@@ -15,7 +15,7 @@ import {
   getRankingViewRows
 } from './components/ranking.js';
 import { updateCharts } from './components/charts.js';
-import { updateHeatmap, initMap, setMapRegional } from './components/mapa.js';
+import { updateHeatmap, initMap, setMapRegional, resetMap } from './components/mapa.js';
 import {
   openModal,
   closeModal,
@@ -41,9 +41,9 @@ async function init() {
 
   // estado inicial
   renderEmptyState();
-  setRegionalUI('');
   setMapRegional('TODOS'); // mapa inicia sem recorte
-  await updateHeatmap([]); // desenha estado inicial do mapa (sem dados)
+  resetMap(); // limpa qualquer overlay sem puxar KML nem desenhar nada  
+  updateHeatmap([]);
 }
 
 /**
@@ -58,7 +58,8 @@ function renderEmptyState() {
   }
 
   try { updateCharts([]); } catch (_) {}
-  try { updateHeatmap([]); } catch (_) {}
+  try { resetMap(); } catch (_) {}
+  
 
   // reset total do ranking
   const totalEl = document.getElementById('rankingElementoTotal');
