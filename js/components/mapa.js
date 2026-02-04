@@ -1,3 +1,6 @@
+// =========================
+// FILE: js/components/mapa.js
+// =========================
 import { generateHeatmapByAlimentador, generateHeatmapByConjunto } from '../services/data-service.js';
 
 let map;
@@ -86,28 +89,53 @@ const HEAT_GRADIENT = {
 };
 
 function boostIntensity(intensity, maxCap) {
-  const x = maxCap > 0 ? clamp(intensity, 0, maxCap) / maxCap : 0;
+  const x = maxCap > 0 ? clamp(Number(intensity) || 0, 0, maxCap) / maxCap : 0;
   const y = Math.pow(x, 0.55);
   return y * maxCap;
 }
 
-function scaleIntensityForHeat(intensity, maxCap, currentMode) {
-  const v = Number(intensity) || 0;
-  if (currentMode === 'CONJUNTO') return boostIntensity(v, maxCap);
+function scaleIntensityForHeat(intensity, maxCap) {
+  return boostIntensity(Number(intensity) || 0, maxCap);
+}
 
-  // ALIMENTADOR mais “seletivo”
-  const x = maxCap > 0 ? clamp(v, 0, maxCap) / maxCap : 0;
-  const gamma = 1.6;
-  const y = Math.pow(x, gamma);
-  return y * maxCap;
+/* =========================
+   Linhas (ALIMENTADOR) - gradiente azul → vermelho
+========================= */
+const LINE_STOPS = [
+  { t: 0.00, rgb: [ 27,  76, 255] }, // azul
+  { t: 0.25, rgb: [  0, 196, 106] }, // verde
+  { t: 0.50, rgb: [255, 230,   0] }, // amarelo
+  { t: 0.75, rgb: [255, 138,   0] }, // laranja
+  { t: 1.00, rgb: [230,   0,   0] }  // vermelho
+];
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function colorFromIntensity(intensity, max, alpha = 0.85) {
+  const x = max > 0 ? clamp(Number(intensity) || 0, 0, max) / max : 0;
+
+  let i = 0;
+  while (i < LINE_STOPS.length - 1 && x > LINE_STOPS[i + 1].t) i++;
+
+  const a = LINE_STOPS[i];
+  const b = LINE_STOPS[Math.min(i + 1, LINE_STOPS.length - 1)];
+  const span = (b.t - a.t) || 1;
+  const tt = (x - a.t) / span;
+
+  const r = Math.round(lerp(a.rgb[0], b.rgb[0], tt));
+  const g = Math.round(lerp(a.rgb[1], b.rgb[1], tt));
+  const bl = Math.round(lerp(a.rgb[2], b.rgb[2], tt));
+
+  return `rgba(${r}, ${g}, ${bl}, ${alpha})`;
 }
 
 function lineStyleByIntensity(intensity, max) {
-  const t = max > 0 ? clamp(intensity, 0, max) / max : 0;
+  const t = max > 0 ? clamp(Number(intensity) || 0, 0, max) / max : 0;
+
   return {
-    color: t > 0.66 ? '#e60000' : t > 0.33 ? '#ff8a00' : '#00c46a',
-    weight: 1.5 + 6.5 * t,
-    opacity: 0.95
+    color: colorFromIntensity(intensity, max, 0.85),
+    weight: 1.1 + 3.2 * t,  // ✅ evita “massa preta”
+    opacity: 0.70
   };
 }
 
@@ -283,7 +311,6 @@ async function loadAlimentadorKmlOnce() {
       alimentadorCenters = {};
       alimentadorLines = {};
     } finally {
-      // libera o lock (mas mantém os dados carregados)
       kmlLoadPromise = null;
     }
   })();
@@ -297,7 +324,6 @@ async function loadAlimentadorKmlOnce() {
 async function loadRegionGeoJSON(regionKey) {
   if (regionKey === 'TODOS') return null;
 
-  // ✅ cache correto (inclusive quando cacheado é null)
   if (cacheHas(regionKey)) return regionGeoJSONCache[regionKey];
 
   const cfg = REGION_FILES[regionKey];
@@ -474,6 +500,7 @@ export function initMap() {
 
 /**
  * Home controla a regional do mapa
+ * (não desenha nada automaticamente)
  */
 export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
@@ -490,14 +517,14 @@ export async function updateHeatmap(data) {
   ensureMapUI();
   purgeAllHeatLayers();
 
-  // ✅ Só carrega KML de alimentadores quando estiver em ALIMENTADOR
+  // ✅ Carrega KML apenas quando realmente for desenhar ALIMENTADOR
   if (mode === 'ALIMENTADOR') {
     await loadAlimentadorKmlOnce();
     if (seq !== renderSeq) return;
   }
 
   // limpar layers
-  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
   if (markersLayer) markersLayer.clearLayers();
   if (linesLayer) linesLayer.clearLayers();
 
@@ -508,10 +535,10 @@ export async function updateHeatmap(data) {
   drawRegionBoundary(regionGeo, currentRegion);
   updateMapRegionalLabel();
 
-  // ✅ Sem dados? Mesmo assim já desenhou a borda
+  // Sem dados: só borda
   if (!lastData.length) return;
 
-  // gerar pontos do modo atual
+  // gerar pontos (sempre) para markers / intensidade
   let points =
     mode === 'ALIMENTADOR'
       ? generateHeatmapByAlimentador(lastData, alimentadorCenters)
@@ -520,11 +547,10 @@ export async function updateHeatmap(data) {
   if (seq !== renderSeq) return;
   if (!points.length) return;
 
-  // ✅ aplicar filtro por regional só se tiver Polygon
+  // filtrar por regional só se tiver Polygon
   if (regionGeo && geojsonHasPolygon(regionGeo)) {
     points = points.filter(p => pointInGeoJSON(p.lat, p.lng, regionGeo));
     if (!points.length) {
-      // Sem warning “assustador”: apenas não renderiza pontos
       console.info('[REGION] 0 pontos dentro do polígono da regional:', currentRegion);
       return;
     }
@@ -532,28 +558,27 @@ export async function updateHeatmap(data) {
 
   const maxCap = 50;
   const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
+  const maxHeat = clamp(Math.round(maxObserved * 0.35), 12, maxCap);
 
-  const maxHeat =
-    mode === 'CONJUNTO'
-      ? clamp(Math.round(maxObserved * 0.35), 12, maxCap)
-      : maxCap;
+  // ✅ Heatmap SOMENTE no modo CONJUNTO (evita sobreposição com ALIMENTADOR)
+  if (mode === 'CONJUNTO') {
+    const heatPoints = points.map(p => [
+      p.lat,
+      p.lng,
+      scaleIntensityForHeat(Number(p.intensity) || 0, maxCap)
+    ]);
 
-  const heatPoints = points.map(p => [
-    p.lat,
-    p.lng,
-    scaleIntensityForHeat(Number(p.intensity) || 0, maxCap, mode)
-  ]);
+    heatLayer = L.heatLayer(heatPoints, {
+      radius: 44,
+      blur: 34,
+      maxZoom: 10,
+      max: maxHeat,
+      minOpacity: 0.55,
+      gradient: HEAT_GRADIENT
+    }).addTo(map);
+  }
 
-  heatLayer = L.heatLayer(heatPoints, {
-    radius: mode === 'ALIMENTADOR' ? 26 : 44,
-    blur: mode === 'ALIMENTADOR' ? 18 : 34,
-    maxZoom: 10,
-    max: maxHeat,
-    minOpacity: 0.55, // ✅ cores mais visíveis
-    gradient: HEAT_GRADIENT
-  }).addTo(map);
-
-  // markers (pontos)
+  // markers (pontos) — fica nos dois modos
   for (const p of points) {
     L.circleMarker([p.lat, p.lng], {
       radius: mode === 'ALIMENTADOR' ? 5 : 6,
@@ -566,7 +591,7 @@ export async function updateHeatmap(data) {
       .addTo(markersLayer);
   }
 
-  // ✅ linhas KML SÓ no modo ALIMENTADOR
+  // ✅ Linhas KML SOMENTE no modo ALIMENTADOR
   if (mode === 'ALIMENTADOR') {
     const intensityByBase = new Map();
     for (const p of points) {
@@ -582,7 +607,6 @@ export async function updateHeatmap(data) {
       const style = lineStyleByIntensity(intensity, maxCap);
 
       for (const latlngs of lines) {
-        // se tiver polígono válido, ao menos parte dentro
         if (regionGeo && geojsonHasPolygon(regionGeo)) {
           const anyInside = latlngs.some(([lat, lng]) => pointInGeoJSON(lat, lng, regionGeo));
           if (!anyInside) continue;
@@ -603,7 +627,7 @@ export async function updateHeatmap(data) {
 
   if (seq !== renderSeq) return;
 
-  // zoom para pontos (ou para bounds da regional se existir)
+  // zoom: se tem borda, prioriza bounds da regional
   const boundsPts = L.latLngBounds(points.map(p => [p.lat, p.lng]));
   if (regionLayer) {
     try {

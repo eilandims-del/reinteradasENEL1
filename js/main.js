@@ -1,3 +1,6 @@
+// =========================
+// FILE: js/main.js
+// =========================
 /**
  * Script Principal - Dashboard
  */
@@ -104,49 +107,30 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFilters);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
-// ✅ Regional (Home)
-document.getElementById('btnRegionalAtlantico')?.addEventListener('click', async () => {
-  setRegionalUI('ATLANTICO');
+  // ✅ Regional (Home) — NÃO carrega mapa/dados ao clicar (apenas seleciona)
+  document.getElementById('btnRegionalAtlantico')?.addEventListener('click', async () => {
+    setRegionalUI('ATLANTICO');
+    setMapRegional('ATLANTICO'); // só atualiza label do mapa
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: ATLANTICO. Selecione o período e clique em Aplicar.', 'success');
+  });
 
-  // ✅ zera dados/visuais primeiro
-  currentData = [];
-  renderEmptyState();
+  document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {
+    setRegionalUI('NORTE');
+    setMapRegional('NORTE');
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: NORTE. Selecione o período e clique em Aplicar.', 'success');
+  });
 
-  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
-  setMapRegional('ATLANTICO');
-  await updateHeatmap([]);
-
-  showToast('Regional selecionada: ATLANTICO. Selecione o período e clique em Aplicar.', 'success');
-});
-
-document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {
-  setRegionalUI('NORTE');
-
-  // ✅ zera dados/visuais primeiro
-  currentData = [];
-  renderEmptyState();
-
-  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
-  setMapRegional('NORTE');
-  await updateHeatmap([]);
-
-  showToast('Regional selecionada: NORTE. Selecione o período e clique em Aplicar.', 'success');
-});
-
-document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', async () => {
-  setRegionalUI('CENTRO NORTE');
-
-  // ✅ zera dados/visuais primeiro
-  currentData = [];
-  renderEmptyState();
-
-  // ✅ mapa: só recorte/borda (sem pontos) até aplicar filtro
-  setMapRegional('CENTRO NORTE');
-  await updateHeatmap([]);
-
-  showToast('Regional selecionada: CENTRO NORTE. Selecione o período e clique em Aplicar.', 'success');
-});
-
+  document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', async () => {
+    setRegionalUI('CENTRO NORTE');
+    setMapRegional('CENTRO NORTE');
+    currentData = [];
+    renderEmptyState();
+    showToast('Regional selecionada: CENTRO NORTE. Selecione o período e clique em Aplicar.', 'success');
+  });
 
   // Copiar ranking (ELEMENTO)
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
@@ -231,7 +215,7 @@ document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', asy
 function renderAll() {
   if (currentData.length === 0) return;
 
-  // 1) Ranking elemento (define currentRankingData internamente)
+  // 1) Ranking elemento
   updateRanking(currentData);
 
   // 2) Tudo baseado na visão do Ranking Elemento (filtro + busca)
@@ -328,7 +312,6 @@ function clearFilters() {
 function openModalAddInfo() {
   const allColumns = getAllColumns(currentData);
 
-  // normalizado sem ponto, por isso ALIMENT (não ALIMENT.)
   const fixedColumns = ['INCIDENCIA', 'CAUSA', 'ALIMENT', 'DATA', 'ELEMENTO', 'CONJUNTO'];
 
   const hiddenCols = new Set(['TMD', 'AVISOS', 'CHI', 'TMA', 'NT', 'DURACAO TOTAL'].map(c => c.trim().toUpperCase()));
