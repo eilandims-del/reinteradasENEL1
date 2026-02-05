@@ -1,4 +1,7 @@
-// js/constants/alimentadores.js
+// =========================
+// FILE: js/constants/alimentadores.js
+// =========================
+
 export const ALIMENTADORES_POR_REGIONAL = {
   "NORTE": [
     "SBQ01F2","SBQ01F3","SBQ01F4",
