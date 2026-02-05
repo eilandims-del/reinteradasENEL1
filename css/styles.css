@@ -1372,26 +1372,45 @@ input:focus, select:focus{
   opacity: 1 !important;
 }
 /* Chips de alimentadores */
+/* Alimentadores (modal) */
 .alim-chip{
-  display:inline-flex;
+  display:flex;
   align-items:center;
-  gap:8px;
-  padding:8px 10px;
-  border-radius:999px;
-  border:1px solid var(--border, #e2e8f0);
-  background:#fff;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  border:1px solid rgba(0,0,0,.10);
+  border-radius:12px;
+  background:rgba(255,255,255,.85);
   cursor:pointer;
-  font-weight:800;
-  font-size:.85rem;
   user-select:none;
+  font-weight:800;
 }
-.alim-chip input{ accent-color:#0f172a; }
+
+.alim-chip .alim-left{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.alim-chip input{ transform:scale(1.05); }
+
 .alim-chip.active{
-  background:#0f172a;
-  color:#fff;
-  border-color: rgba(15,23,42,0.45);
+  border-color:#0A4A8C;
+  background:rgba(10,74,140,.10);
 }
-.alim-chip small{
-  opacity:.75;
+
+.alim-chip.disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.alim-count{
   font-weight:900;
+  color:#111;
+}
+
+.alim-count{
+  font-weight:900;
+  color:#111;
 }
