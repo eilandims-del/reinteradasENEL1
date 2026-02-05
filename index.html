@@ -1,46 +1,53 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Visualização das Reiteradas - ENEL</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Visualização das Reiteradas - ENEL</title>
 
-    <!-- ✅ Open Graph / WhatsApp / LinkedIn -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Reiteradas - ENEL" />
-    <meta property="og:description" content="Sistema de Visualização das Reiteradas - Painel de análise operacional." />
-    <meta property="og:url" content="https://eilandims-del.github.io/reiteradasenel/" />
-    <meta property="og:image" content="https://eilandims-del.github.io/reiteradasenel/assets/logo-enel-preview.png" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:type" content="image/png" />
+  <!-- ✅ Open Graph / WhatsApp / LinkedIn -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Reiteradas - ENEL" />
+  <meta property="og:description" content="Sistema de Visualização das Reiteradas - Painel de análise operacional." />
+  <meta property="og:url" content="https://eilandims-del.github.io/reiteradasenel/" />
+  <meta property="og:image" content="https://eilandims-del.github.io/reiteradasenel/assets/logo-enel-preview.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
 
-    <!-- ✅ Twitter -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Reiteradas - ENEL" />
-    <meta name="twitter:description" content="Sistema de Visualização das Reiteradas - Painel de análise operacional." />
-    <meta name="twitter:image" content="https://eilandims-del.github.io/reiteradasenel/assets/logo-enel-preview.png" />
+  <!-- ✅ Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Reiteradas - ENEL" />
+  <meta name="twitter:description" content="Sistema de Visualização das Reiteradas - Painel de análise operacional." />
+  <meta name="twitter:image" content="https://eilandims-del.github.io/reiteradasenel/assets/logo-enel-preview.png" />
 
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
 
-    <!-- Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <!-- Estilos -->
-    <link rel="stylesheet" href="css/style.css">
+  <!-- ✅ Estilos (CORRETO) -->
+  <link rel="stylesheet" href="css/styles.css" />
 
-    <!-- Font Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- ✅ Favicon: só mantém se existir na raiz do repo -->
+  <!-- Se você NÃO tiver favicon.ico na raiz, comente a linha abaixo -->
+  <!-- <link rel="icon" href="favicon.ico"> -->
+
+  <!-- Font Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 </head>
 
 <body>
   <header class="header">
     <div class="header-content">
       <div class="logo">
-        <img src="assets/logo-enel.png" alt="ENEL" />
+        <!-- ✅ Logo (CORRETO) -->
+        <!-- No zip antigo, o logo do topo era assets/enel1.png -->
+        <img src="assets/enel1.png" alt="ENEL" />
+
         <div>
           <h1>Reiteradas - ENEL</h1>
           <p>Painel de análise operacional</p>
@@ -85,7 +92,9 @@
 
       <div class="filter-summary" style="margin-top:10px; font-size:0.95rem; color: var(--medium-gray); font-weight:800;">
         Selecionada: <span id="regionalAtualLabel">—</span>
-        <span id="alimentadoresSelecionadosLabel" style="margin-left:10px; font-weight:900; color: var(--medium-gray); cursor:pointer;">Alimentadores: —</span>
+        <span id="alimentadoresSelecionadosLabel" style="margin-left:10px; font-weight:900; color: var(--medium-gray); cursor:pointer;">
+          Alimentadores: —
+        </span>
       </div>
 
       <div style="margin-top:8px; font-size:0.9rem; color: var(--medium-gray); font-weight:700;">
@@ -104,12 +113,12 @@
       <div class="filters-row">
         <div class="input-group">
           <label for="dataInicial">Data inicial</label>
-          <input type="datetime-local" id="dataInicial">
+          <input type="datetime-local" id="dataInicial" />
         </div>
 
         <div class="input-group">
           <label for="dataFinal">Data final</label>
-          <input type="datetime-local" id="dataFinal">
+          <input type="datetime-local" id="dataFinal" />
         </div>
 
         <div class="filter-actions">
@@ -126,9 +135,8 @@
     <!-- =========================
          RANKING + MAPA + CHARTS
     ========================== -->
-    <!-- (mantive o resto do seu HTML como estava, sem alterar estrutura) -->
-
-    <!-- ... (seu conteúdo original continua aqui) ... -->
+    <!-- ✅ IMPORTANTE: aqui você precisa manter o resto do HTML original do projeto
+         (ranking, containers, mapa, etc). Se você removeu/encurtou no commit, vai quebrar IDs. -->
 
     <!-- =========================
          MODAL ALIMENTADORES
@@ -153,7 +161,6 @@
           </div>
 
           <div id="alimHintModal" style="margin-top:10px; font-weight:800; color: var(--medium-gray);"></div>
-
           <div id="alimListModal" class="alim-list"></div>
 
           <div style="margin-top:14px; display:flex; justify-content:flex-end;">
@@ -168,8 +175,7 @@
     <!-- =========================
          OUTROS MODAIS (mantidos)
     ========================== -->
-    <!-- ... (seus outros modais continuam) ... -->
-
+    <!-- ... -->
   </main>
 
   <!-- Leaflet -->
@@ -180,7 +186,7 @@
   <script src="https://unpkg.com/@mapbox/togeojson@0.16.0/togeojson.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
-  <!-- ✅ App -->
+  <!-- ✅ App (CORRETO) -->
   <script type="module" src="js/main.js"></script>
 
   <!-- Ano automático -->
