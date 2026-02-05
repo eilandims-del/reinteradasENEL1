@@ -37,6 +37,26 @@ let currentRegion = 'TODOS';
 let regionGeoJSONCache = {}; // key -> geojson | null
 
 /* =========================
+   ALIMENTADOR FILTER UI
+========================= */
+let alimPanelMounted = false;
+let alimPanelCollapsed = false;
+let alimSelected = new Set();        // baseKey
+let alimSearchTerm = '';             // texto de busca
+let alimLastItems = [];              // [{ baseKey, label, count }]
+let alimPanelRefs = {
+  wrap: null,
+  headerBtn: null,
+  title: null,
+  body: null,
+  search: null,
+  list: null,
+  btnAll: null,
+  btnClear: null,
+  hint: null
+};
+
+/* =========================
    HELPERS
 ========================= */
 function decimateLatLngs(latlngs, step = 3) {
@@ -71,6 +91,7 @@ function normalizeRegionalKey(r) {
 
 function extractAlimBase(name) {
   const n = normKey(name);
+  // pega padrão 3 letras + 2 dígitos (TLM82, TLO21 etc)
   const m = n.match(/([A-Z]{3}\s?\d{2})/);
   if (!m) return n;
   return m[1].replace(/\s+/g, '');
@@ -207,8 +228,6 @@ function pointInPolygon(point, polygonCoords) {
 
 function pointInGeoJSON(lat, lng, geojson) {
   if (!geojson) return true;
-
-  // ✅ Se não tem Polygon/MultiPolygon, não filtra
   if (!geojsonHasPolygon(geojson)) return true;
 
   const point = [lng, lat];
@@ -306,7 +325,7 @@ function parseKmlLinesToIndex(kmlText) {
 }
 
 async function loadAlimentadorKmlOnce() {
-  if (Object.keys(alimentadorCenters).length > 0) return;
+  if (Object.keys(alimentadorLines).length > 0) return; // ✅ mais seguro: linhas é o que importa
   if (kmlLoadPromise) return kmlLoadPromise;
 
   kmlLoadPromise = (async () => {
@@ -397,7 +416,6 @@ function drawRegionBoundary(geojson, label) {
 
   if (!geojson) return;
 
-  // ✅ IMPORTANTE: desenha SOMENTE Polygon/MultiPolygon (evita “linhas pretas” do KMZ/KML)
   regionLayer = L.geoJSON(geojson, {
     filter: (feature) => {
       const t = feature?.geometry?.type;
@@ -414,7 +432,6 @@ function drawRegionBoundary(geojson, label) {
 
   regionLayer.bindPopup(`<strong>Regional:</strong> ${label}`);
 }
-
 
 /* =========================
    UI
@@ -465,39 +482,39 @@ function ensureMapUI() {
 
   const btnConj = box.querySelector('#btnModeConj');
   const btnAlim = box.querySelector('#btnModeAlim');
-  
+
   btnConjRef = btnConj;
   btnAlimRef = btnAlim;
-  
-  // ✅ Legenda 0 → 50+ (azul → vermelho)
-if (!legendMounted) {
-  legendMounted = true;
 
-  const legend = document.createElement('div');
-  legend.style.marginTop = '10px';
-  legend.style.paddingTop = '10px';
-  legend.style.borderTop = '1px solid rgba(0,0,0,0.10)';
-  legend.innerHTML = `
-    <div style="font-size:11px; font-weight:900; margin-bottom:6px;">Intensidade</div>
-    <div style="
-      height:10px;
-      border-radius:999px;
-      background: linear-gradient(90deg,
-        ${HEAT_GRADIENT[0.00]},
-        ${HEAT_GRADIENT[0.25]},
-        ${HEAT_GRADIENT[0.50]},
-        ${HEAT_GRADIENT[0.75]},
-        ${HEAT_GRADIENT[1.00]}
-      );
-      border: 1px solid rgba(0,0,0,0.12);
-    "></div>
-    <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:11px; color:#111; font-weight:900;">
-      <span>0</span>
-      <span>50+</span>
-    </div>
-  `;
-  box.appendChild(legend);
-}
+  // ✅ Legenda 0 → 50+ (azul → vermelho)
+  if (!legendMounted) {
+    legendMounted = true;
+
+    const legend = document.createElement('div');
+    legend.style.marginTop = '10px';
+    legend.style.paddingTop = '10px';
+    legend.style.borderTop = '1px solid rgba(0,0,0,0.10)';
+    legend.innerHTML = `
+      <div style="font-size:11px; font-weight:900; margin-bottom:6px;">Intensidade</div>
+      <div style="
+        height:10px;
+        border-radius:999px;
+        background: linear-gradient(90deg,
+          ${HEAT_GRADIENT[0.00]},
+          ${HEAT_GRADIENT[0.25]},
+          ${HEAT_GRADIENT[0.50]},
+          ${HEAT_GRADIENT[0.75]},
+          ${HEAT_GRADIENT[1.00]}
+        );
+        border: 1px solid rgba(0,0,0,0.12);
+      "></div>
+      <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:11px; color:#111; font-weight:900;">
+        <span>0</span>
+        <span>50+</span>
+      </div>
+    `;
+    box.appendChild(legend);
+  }
 
   const paintButtons = () => {
     btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
@@ -519,6 +536,187 @@ if (!legendMounted) {
   });
 
   paintButtons();
+
+  // ✅ Painel Alimentadores (recolhível)
+  mountAlimentadorPanel(container, wrap);
+}
+
+function mountAlimentadorPanel(container, wrap) {
+  if (alimPanelMounted) return;
+  alimPanelMounted = true;
+
+  const panel = document.createElement('div');
+  panel.style.background = 'rgba(255,255,255,0.92)';
+  panel.style.border = '1px solid rgba(0,0,0,0.12)';
+  panel.style.borderRadius = '10px';
+  panel.style.padding = '10px';
+  panel.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+  panel.style.fontFamily = 'Inter, system-ui, Arial';
+  panel.style.fontSize = '12px';
+  panel.style.fontWeight = '800';
+  panel.style.display = 'none'; // só aparece no modo ALIMENTADOR
+
+  panel.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+      <div id="alimTitle" style="font-size:12px; font-weight:900;">Alimentadores</div>
+      <button id="alimToggle" style="
+        padding:4px 8px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:900;
+        background:#fff;color:#111;
+      ">▾</button>
+    </div>
+
+    <div id="alimBody" style="margin-top:8px;">
+      <input id="alimSearch" type="text" placeholder="Buscar..." style="
+        width:100%; height:30px; padding:0 10px; border-radius:10px; border:1px solid #ddd;
+        font-weight:800; outline:none;
+      " />
+
+      <div style="display:flex; gap:6px; margin-top:8px;">
+        <button id="alimAll" style="flex:1; padding:6px 10px;border-radius:10px;border:1px solid #ddd;cursor:pointer;font-weight:900;background:#0A4A8C;color:#fff;">
+          Todos
+        </button>
+        <button id="alimClear" style="flex:1; padding:6px 10px;border-radius:10px;border:1px solid #ddd;cursor:pointer;font-weight:900;background:#fff;color:#111;">
+          Limpar
+        </button>
+      </div>
+
+      <div id="alimHint" style="margin-top:8px; font-size:11px; font-weight:900; color:#444;"></div>
+
+      <div id="alimList" style="
+        margin-top:8px;
+        max-height:180px;
+        overflow:auto;
+        padding-right:4px;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+      "></div>
+    </div>
+  `;
+
+  wrap.appendChild(panel);
+
+  alimPanelRefs.wrap = panel;
+  alimPanelRefs.headerBtn = panel.querySelector('#alimToggle');
+  alimPanelRefs.title = panel.querySelector('#alimTitle');
+  alimPanelRefs.body = panel.querySelector('#alimBody');
+  alimPanelRefs.search = panel.querySelector('#alimSearch');
+  alimPanelRefs.list = panel.querySelector('#alimList');
+  alimPanelRefs.btnAll = panel.querySelector('#alimAll');
+  alimPanelRefs.btnClear = panel.querySelector('#alimClear');
+  alimPanelRefs.hint = panel.querySelector('#alimHint');
+
+  const applyCollapsed = () => {
+    if (!alimPanelRefs.body) return;
+    alimPanelRefs.body.style.display = alimPanelCollapsed ? 'none' : 'block';
+    if (alimPanelRefs.headerBtn) alimPanelRefs.headerBtn.textContent = alimPanelCollapsed ? '▸' : '▾';
+  };
+
+  alimPanelRefs.headerBtn?.addEventListener('click', () => {
+    alimPanelCollapsed = !alimPanelCollapsed;
+    applyCollapsed();
+  });
+
+  alimPanelRefs.search?.addEventListener('input', (e) => {
+    alimSearchTerm = String(e.target.value || '');
+    renderAlimentadorList();
+  });
+
+  alimPanelRefs.btnAll?.addEventListener('click', async () => {
+    alimSelected = new Set(alimLastItems.map(x => x.baseKey));
+    renderAlimentadorList();
+    await updateHeatmap(lastData);
+  });
+
+  alimPanelRefs.btnClear?.addEventListener('click', async () => {
+    alimSelected = new Set();
+    renderAlimentadorList();
+    await updateHeatmap(lastData);
+  });
+
+  applyCollapsed();
+}
+
+function setAlimentadorPanelVisible(visible) {
+  if (!alimPanelRefs.wrap) return;
+  alimPanelRefs.wrap.style.display = visible ? 'block' : 'none';
+}
+
+function renderAlimentadorList() {
+  const list = alimPanelRefs.list;
+  const hint = alimPanelRefs.hint;
+  if (!list || !hint) return;
+
+  const term = normKey(alimSearchTerm);
+  const items = (alimLastItems || []).filter(it => {
+    if (!term) return true;
+    return normKey(it.label).includes(term) || normKey(it.baseKey).includes(term);
+  });
+
+  hint.textContent = `Selecionados: ${alimSelected.size} • Disponíveis: ${alimLastItems.length}`;
+
+  list.innerHTML = '';
+  for (const it of items) {
+    const row = document.createElement('label');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.justifyContent = 'space-between';
+    row.style.gap = '10px';
+    row.style.padding = '6px 8px';
+    row.style.border = '1px solid rgba(0,0,0,0.08)';
+    row.style.borderRadius = '10px';
+    row.style.background = 'rgba(255,255,255,0.7)';
+    row.style.cursor = 'pointer';
+    row.style.userSelect = 'none';
+
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.alignItems = 'center';
+    left.style.gap = '10px';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = alimSelected.has(it.baseKey);
+    cb.style.transform = 'scale(1.05)';
+
+    const name = document.createElement('div');
+    name.style.fontWeight = '900';
+    name.style.fontSize = '12px';
+    name.textContent = it.label;
+
+    left.appendChild(cb);
+    left.appendChild(name);
+
+    const right = document.createElement('div');
+    right.style.fontWeight = '900';
+    right.style.color = '#111';
+    right.textContent = String(it.count);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
+    cb.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const checked = cb.checked;
+
+      if (checked) alimSelected.add(it.baseKey);
+      else alimSelected.delete(it.baseKey);
+
+      renderAlimentadorList();
+      await updateHeatmap(lastData);
+    });
+
+    row.addEventListener('click', async () => {
+      const checked = !alimSelected.has(it.baseKey);
+      if (checked) alimSelected.add(it.baseKey);
+      else alimSelected.delete(it.baseKey);
+
+      renderAlimentadorList();
+      await updateHeatmap(lastData);
+    });
+
+    list.appendChild(row);
+  }
 }
 
 function updateMapRegionalLabel() {
@@ -549,24 +747,19 @@ export function initMap() {
   updateMapRegionalLabel();
 }
 
-/**
- * Home controla a regional do mapa
- * (não desenha nada automaticamente)
- */
 export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
   if (map) updateMapRegionalLabel();
 }
+
 export function resetMap() {
   lastData = [];
 
   if (!map) initMap();
   if (!map) return;
 
-  // volta pro padrão: CONJUNTO
   mode = 'CONJUNTO';
 
-  // limpa tudo
   purgeAllHeatLayers();
 
   if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
@@ -575,7 +768,8 @@ export function resetMap() {
 
   if (regionLayer) { try { map.removeLayer(regionLayer); } catch (_) {} regionLayer = null; }
 
-  // repinta botões (se UI já montada)
+  setAlimentadorPanelVisible(false);
+
   if (btnConjRef && btnAlimRef) {
     const base = 'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
     const active = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
@@ -585,6 +779,38 @@ export function resetMap() {
   }
 }
 
+/* =========================
+   ALIMENTADOR intensity (robusto, sem depender de center)
+========================= */
+function getAlimRawFromRow(row) {
+  if (!row || typeof row !== 'object') return '';
+
+  // tenta variações comuns
+  return (
+    row['ALIMENT.'] ??
+    row['ALIMENT'] ??
+    row['ALIMENTADOR'] ??
+    row['ALIMENTADOR '] ??
+    row['ALIMENT. '] ??
+    ''
+  );
+}
+
+function buildIntensityByBaseFromRows(rows) {
+  const acc = new Map();
+  (rows || []).forEach(row => {
+    const raw = getAlimRawFromRow(row);
+    const base = extractAlimBase(raw);
+    const baseKey = normKey(base);
+    if (!baseKey) return;
+    acc.set(baseKey, (acc.get(baseKey) || 0) + 1);
+  });
+  return acc;
+}
+
+/* =========================
+   MAIN RENDER
+========================= */
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
   const seq = ++renderSeq;
@@ -608,38 +834,32 @@ export async function updateHeatmap(data) {
   updateMapRegionalLabel();
 
   // Sem dados: só borda
-  if (!lastData.length) return;
-
-  // ✅ Carrega KML apenas quando realmente for desenhar ALIMENTADOR
-  if (mode === 'ALIMENTADOR') {
-    await loadAlimentadorKmlOnce();
-    if (seq !== renderSeq) return;
-  }
-
-  // gerar pontos (sempre) para markers / intensidade
-  let points =
-    mode === 'ALIMENTADOR'
-      ? generateHeatmapByAlimentador(lastData, alimentadorCenters)
-      : generateHeatmapByConjunto(lastData);
-
-  if (seq !== renderSeq) return;
-  if (!points.length) return;
-
-  // filtrar por regional só se tiver Polygon
-  if (regionGeo && geojsonHasPolygon(regionGeo)) {
-    points = points.filter(p => pointInGeoJSON(p.lat, p.lng, regionGeo));
-    if (!points.length) {
-      console.info('[REGION] 0 pontos dentro do polígono da regional:', currentRegion);
-      return;
-    }
+  if (!lastData.length) {
+    setAlimentadorPanelVisible(false);
+    return;
   }
 
   const maxCap = 50; // legenda fixa 0 → 50+
-  const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
-  const maxHeat = clamp(Math.round(maxObserved * 0.35), 12, maxCap);
 
-  // ✅ Heatmap SOMENTE no modo CONJUNTO (evita sobreposição com ALIMENTADOR)
+  // =========================
+  // MODO CONJUNTO
+  // =========================
   if (mode === 'CONJUNTO') {
+    setAlimentadorPanelVisible(false);
+
+    let points = generateHeatmapByConjunto(lastData);
+    if (seq !== renderSeq) return;
+    if (!points.length) return;
+
+    // filtrar por regional só se tiver Polygon
+    if (regionGeo && geojsonHasPolygon(regionGeo)) {
+      points = points.filter(p => pointInGeoJSON(p.lat, p.lng, regionGeo));
+      if (!points.length) return;
+    }
+
+    const maxObserved = points.reduce((m, p) => Math.max(m, Number(p.intensity) || 0), 0);
+    const maxHeat = clamp(Math.round(maxObserved * 0.35), 12, maxCap);
+
     const heatPoints = points.map(p => [
       p.lat,
       p.lng,
@@ -654,48 +874,82 @@ export async function updateHeatmap(data) {
       minOpacity: 0.55,
       gradient: HEAT_GRADIENT
     }).addTo(map);
+
+    // markers
+    for (const p of points) {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 6,
+        color: 'rgba(255,255,255,0.85)',
+        fillColor: '#0A4A8C',
+        fillOpacity: 0.35,
+        weight: 1
+      })
+        .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
+        .addTo(markersLayer);
+    }
+
+    // zoom automático
+    const boundsPts = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+    if (regionLayer) {
+      try {
+        const boundsRegion = regionLayer.getBounds();
+        map.fitBounds(boundsRegion.isValid() ? boundsRegion : boundsPts, { padding: [40, 40] });
+      } catch (_) {
+        map.fitBounds(boundsPts, { padding: [40, 40] });
+      }
+    } else {
+      map.fitBounds(boundsPts, { padding: [40, 40] });
+    }
+
+    return;
   }
 
-  // markers (pontos) — fica nos dois modos
-// ✅ Marcadores só no modo CONJUNTO (remove “pins” do ALIMENTADOR)
-if (mode === 'CONJUNTO') {
-  for (const p of points) {
-    L.circleMarker([p.lat, p.lng], {
-      radius: 6,
-      color: 'rgba(255,255,255,0.85)',
-      fillColor: '#0A4A8C',
-      fillOpacity: 0.35,
-      weight: 1
-    })
-      .bindPopup(`<strong>${p.label}</strong><br>Reiteradas (total): <b>${p.intensity}</b>`)
-      .addTo(markersLayer);
-  }
-}
+  // =========================
+  // MODO ALIMENTADOR (FIX)
+  // =========================
+  setAlimentadorPanelVisible(true);
 
-// ✅ Apenas ALIMENTADOR tem linhas / ranking por base
-// ✅ Linhas SOMENTE no modo ALIMENTADOR
-if (mode === 'ALIMENTADOR') {
-  // ✅ mapa de intensidade por alimentador-base (para colorir linhas)
-  const intensityByBase = new Map();
-  for (const p of points) {
-    const baseKey = normKey(p.base || p.label);
-    intensityByBase.set(baseKey, Number(p.intensity) || 0);
+  // carrega KML (linhas)
+  await loadAlimentadorKmlOnce();
+  if (seq !== renderSeq) return;
+
+  const intensityByBase = buildIntensityByBaseFromRows(lastData);
+
+  if (!intensityByBase.size) {
+    console.info('[ALIM] 0 alimentadores encontrados nas linhas do dataset (coluna ALIMENT/ALIMENT.)');
+    return;
   }
 
-  const TOP_N = 40; // 30 (leve) | 60 (ok) | 100 (pesado)
-
-  // Ordena alimentadores por intensidade (desc)
-  const rankedBases = Array.from(intensityByBase.entries())
+  // monta itens para UI (usa display do KML se tiver)
+  const items = Array.from(intensityByBase.entries())
     .filter(([, v]) => (Number(v) || 0) > 0)
     .sort((a, b) => (Number(b[1]) || 0) - (Number(a[1]) || 0))
-    .slice(0, TOP_N)
-    .map(([k]) => k);
+    .map(([baseKey, count]) => {
+      const display = alimentadorCenters?.[baseKey]?.display || baseKey;
+      return { baseKey, label: display, count: Number(count) || 0 };
+    });
 
-  // Monta fila de desenho (render progressivo)
+  alimLastItems = items;
+
+  // default: seleciona todos (na 1ª vez)
+  if (alimSelected.size === 0 && items.length) {
+    items.forEach(it => alimSelected.add(it.baseKey));
+  }
+
+  renderAlimentadorList();
+
+  // selecionados finais
+  const selectedBases = items
+    .map(it => it.baseKey)
+    .filter(k => alimSelected.has(k));
+
+  const basesToDraw = selectedBases.length ? selectedBases : items.map(it => it.baseKey);
+
+  // fila de desenho
   const queue = [];
-  for (const baseKey of rankedBases) {
+  for (const baseKey of basesToDraw) {
     const lines = alimentadorLines[baseKey];
-    if (!lines) continue;
+    if (!lines || !lines.length) continue;
 
     const intensity = intensityByBase.get(baseKey) || 0;
     if (intensity <= 0) continue;
@@ -707,51 +961,37 @@ if (mode === 'ALIMENTADOR') {
     }
   }
 
+  if (!queue.length) {
+    console.info('[ALIM] Nenhuma linha encontrada para os alimentadores selecionados. (Provável mismatch com doc.kml)');
+    return;
+  }
+
   let i = 0;
-  const BATCH = 60; // 60/120/200
+  const BATCH = 70;
 
   function drawBatch() {
-    // ✅ se o usuário mudou modo/filtro enquanto desenhava, interrompe
     if (seq !== renderSeq) return;
 
     const end = Math.min(i + BATCH, queue.length);
     for (; i < end; i++) {
       const { latlngs, style } = queue[i];
 
+      // regional filter por amostragem (não depende de center!)
       if (regionGeo && geojsonHasPolygon(regionGeo)) {
         let anyInside = false;
-        for (let k = 0; k < latlngs.length; k += 10) { // ✅ testa 1 a cada 10
+        for (let k = 0; k < latlngs.length; k += 10) {
           const [lat, lng] = latlngs[k];
           if (pointInGeoJSON(lat, lng, regionGeo)) { anyInside = true; break; }
         }
         if (!anyInside) continue;
-        }
+      }
 
-        const simplified = decimateLatLngs(latlngs, 6); // ✅ mais leve
-        L.polyline(simplified, style).addTo(linesLayer);
+      const simplified = decimateLatLngs(latlngs, 6);
+      L.polyline(simplified, style).addTo(linesLayer);
     }
 
     if (i < queue.length) requestAnimationFrame(drawBatch);
   }
 
   requestAnimationFrame(drawBatch);
-}
-
-
-// ✅ desenha só os alimentadores mais “quentes” para não travar
-  // zoom: se tem borda, prioriza bounds da regional
-// ✅ evita travar no ALIMENTADOR com zoom automático
-if (mode === 'CONJUNTO') {
-  const boundsPts = L.latLngBounds(points.map(p => [p.lat, p.lng]));
-  if (regionLayer) {
-    try {
-      const boundsRegion = regionLayer.getBounds();
-      map.fitBounds(boundsRegion.isValid() ? boundsRegion : boundsPts, { padding: [40, 40] });
-    } catch (_) {
-      map.fitBounds(boundsPts, { padding: [40, 40] });
-    }
-  } else {
-    map.fitBounds(boundsPts, { padding: [40, 40] });
-  }
-}
 }
