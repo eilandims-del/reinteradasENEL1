@@ -597,6 +597,23 @@ function buildBaseDisplayNameMap(rows) {
   return m;
 }
 
+function buildIntensityByBaseFromRows(rows) {
+  const map = new Map();
+
+  (rows || []).forEach(row => {
+    const raw = getAlimRawFromRow(row);
+    if (!raw) return;
+
+    const base = extractAlimBase(raw);
+    const key = normKey(base);
+    if (!key) return;
+
+    map.set(key, (map.get(key) || 0) + 1);
+  });
+
+  return map;
+}
+
 
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
