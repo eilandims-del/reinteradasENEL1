@@ -86,8 +86,12 @@ async function init() {
   // ✅ Guard global: bloqueia fechar modalAlimentadores se inválido
   window.__beforeCloseModal = (modalId) => {
     if (modalId !== 'modalAlimentadores') return true;
-    return validateAlimentadoresSelection(true); // true = não fecha e mostra warning
-  };  
+  
+    const ok = validateAlimentadoresSelection(true);
+    if (!ok) showToast('Escolha TODOS ou selecione 1+ alimentadores antes de fechar.', 'error');
+    return ok;
+  };
+  
 }
 
 /**
@@ -146,23 +150,38 @@ function updateAlimentadoresBadge() {
   const el = document.getElementById('badgeOpenAlimentadores');
   if (!el) return;
 
+  const setBadge = (txt) => {
+    el.innerHTML = `<i class="fas fa-diagram-project"></i> ${txt}`;
+  };
+
   if (!selectedRegional) {
-    el.innerHTML = badgeHTML('Alimentadores: —');
+    setBadge('Alimentadores: —');
     return;
   }
 
-  if (!alimTouched || alimSelectionMode === 'NONE') {
-    el.innerHTML = badgeHTML('Alimentadores: (selecionar)');
+  const catalog = getCatalogForSelectedRegional();
+  const totalCatalog = catalog.length;
+
+  if (!totalCatalog) {
+    setBadge('Alimentadores: —');
     return;
   }
 
-  if (alimSelectionMode === 'TODOS') {
-    el.innerHTML = badgeHTML('Alimentadores: TODOS');
+  // TODOS = Set tem o tamanho do catálogo
+  if (selectedAlimentadores.size === totalCatalog) {
+    setBadge('Alimentadores: TODOS');
     return;
   }
 
-  el.innerHTML = badgeHTML(`Alimentadores: ${selectedAlimentadores.size}`);
+  if (selectedAlimentadores.size > 0) {
+    setBadge(`Alimentadores: ${selectedAlimentadores.size}`);
+    return;
+  }
+
+  // Ainda não selecionou nada (estado inicial antes de confirmar)
+  setBadge('Alimentadores: (selecionar)');
 }
+
 
 function updateAlimentadoresHint(hintEl, catalog, countsMap) {
   const total = catalog.length;
@@ -202,27 +221,32 @@ function warnObrigatorioOnce() {
 }
 
 function validateAlimentadoresSelection(silent = false) {
-  // precisa ter regional escolhida
   if (!selectedRegional) {
     if (!silent) showToast('Selecione uma Regional primeiro.', 'error');
     return false;
   }
 
-  // TODOS é válido
-  if (alimSelectionMode === 'TODOS') return true;
+  const catalog = getCatalogForSelectedRegional();
+  const totalCatalog = catalog.length;
 
-  // CUSTOM exige pelo menos 1 marcado
-  if (selectedAlimentadores && selectedAlimentadores.size > 0) return true;
-
-  if (!silent) {
-    showToast('Selecione "TODOS" ou pelo menos 1 alimentador.', 'error');
-  } else {
-    // silent=true ocorre quando tenta fechar via X/fora/ESC
-    warnObrigatorioOnce();
+  // Se o catálogo não existir, não deixa avançar
+  if (!totalCatalog) {
+    if (!silent) showToast('Catálogo de alimentadores não encontrado para esta regional.', 'error');
+    return false;
   }
 
+  // Considera válido se:
+  // - selecionou pelo menos 1 alimentador
+  // - ou selecionou TODOS (que, no nosso caso, é quando o Set tem o tamanho do catálogo)
+  const isAll = selectedAlimentadores.size === totalCatalog;
+  const hasOneOrMore = selectedAlimentadores.size > 0;
+
+  if (isAll || hasOneOrMore) return true;
+
+  if (!silent) showToast('Selecione TODOS ou pelo menos 1 alimentador.', 'error');
   return false;
 }
+
 
 
 function openAlimentadoresModal() {
@@ -237,7 +261,6 @@ function openAlimentadoresModal() {
     return;
   }
 
-  // ✅ IDs do seu HTML (Modal Alimentadores)
   const modal = document.getElementById('modalAlimentadores');
   const listEl = document.getElementById('alimListModal');
   const hintEl = document.getElementById('alimHintModal');
@@ -268,6 +291,23 @@ function openAlimentadoresModal() {
     counts.set(k, (counts.get(k) || 0) + 1);
   });
 
+  const totalCatalog = catalog.length;
+
+  const renderHint = () => {
+    // TODOS = selecionou tudo
+    if (selectedAlimentadores.size === totalCatalog) {
+      hintEl.innerHTML = `Modo: <b>TODOS</b> • Catálogo: <b>${totalCatalog}</b>`;
+      return;
+    }
+
+    if (selectedAlimentadores.size > 0) {
+      hintEl.innerHTML = `Selecionados: <b>${selectedAlimentadores.size}</b> • Catálogo: <b>${totalCatalog}</b>`;
+      return;
+    }
+
+    hintEl.innerHTML = `Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.`;
+  };
+
   const renderList = () => {
     listEl.innerHTML = '';
 
@@ -275,7 +315,7 @@ function openAlimentadoresModal() {
       const key = normKey(alim);
       const qtd = counts.get(key);
 
-      const checked = (alimSelectionMode === 'CUSTOM') && selectedAlimentadores.has(key);
+      const checked = selectedAlimentadores.has(key);
 
       const row = document.createElement('label');
       row.className = 'alim-chip';
@@ -293,36 +333,46 @@ function openAlimentadoresModal() {
       row.classList.toggle('active', checked);
 
       input.onchange = () => {
-        // qualquer interação vira CUSTOM
-        alimSelectionMode = 'CUSTOM';
-
         row.classList.toggle('active', input.checked);
         if (input.checked) selectedAlimentadores.add(key);
         else selectedAlimentadores.delete(key);
 
-        updateAlimentadoresHint(hintEl, catalog, counts);
+        renderHint();
         updateAlimentadoresBadge();
       };
 
       listEl.appendChild(row);
     });
 
-    updateAlimentadoresHint(hintEl, catalog, counts);
+    renderHint();
     updateAlimentadoresBadge();
   };
 
-  // ✅ TODOS (modo sem filtro, mas explicitamente selecionado)
-  btnTodos.onclick = (e) => {
+  // ✅ TODOS: seleciona tudo + fecha + aplica se já tiver data
+  btnTodos.onclick = async (e) => {
     e.preventDefault();
-    alimSelectionMode = 'TODOS';
-    selectedAlimentadores = new Set();
-    renderList();
+
+    selectedAlimentadores = new Set(catalog.map(a => normKey(a)));
+
+    renderHint();
+    updateAlimentadoresBadge();
+
+    const di = document.getElementById('dataInicial')?.value || '';
+    const df = document.getElementById('dataFinal')?.value || '';
+
+    // Se tem data, já recarrega e atualiza cards
+    if (di || df) {
+      await applyFiltersDebounced();
+    } else if (currentData.length) {
+      renderAll();
+    }
+
+    closeModal('modalAlimentadores');
   };
 
-  // ✅ LIMPAR (CUSTOM vazio -> inválido até marcar 1)
+  // ✅ LIMPAR: deixa vazio (inválido para fechar, até marcar 1+)
   btnLimpar.onclick = (e) => {
     e.preventDefault();
-    alimSelectionMode = 'CUSTOM';
     selectedAlimentadores = new Set();
     renderList();
   };
@@ -347,21 +397,18 @@ function openAlimentadoresModal() {
     const di = document.getElementById('dataInicial')?.value || '';
     const df = document.getElementById('dataFinal')?.value || '';
 
-    // Se tem data -> recarrega dados (Firestore) e renderiza
     if (di || df) {
       await applyFiltersDebounced();
       closeModal('modalAlimentadores');
       return;
     }
 
-    // Sem data -> aplica filtro local se já tiver currentData
     if (currentData.length) {
       renderAll();
       closeModal('modalAlimentadores');
       return;
     }
 
-    // Sem data e sem dados
     showToast('Selecione um período para carregar os dados.', 'error');
   };
 
@@ -369,6 +416,8 @@ function openAlimentadoresModal() {
   renderList();
   openModal('modalAlimentadores');
 }
+
+
 
 
 
