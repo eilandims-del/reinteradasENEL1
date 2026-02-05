@@ -585,17 +585,18 @@ function getAlimRawFromRow(row) {
   );
 }
 
-function buildIntensityByBaseFromRows(rows) {
-  const acc = new Map();
+function buildBaseDisplayNameMap(rows) {
+  const m = new Map();
   (rows || []).forEach(row => {
     const raw = getAlimRawFromRow(row);
     const base = extractAlimBase(raw);
-    const baseKey = normKey(base);
-    if (!baseKey) return;
-    acc.set(baseKey, (acc.get(baseKey) || 0) + 1);
+    const key = normKey(base);
+    if (!key) return;
+    if (!m.has(key)) m.set(key, String(base || '').trim());
   });
-  return acc;
+  return m;
 }
+
 
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
@@ -722,7 +723,25 @@ export async function updateHeatmap(data) {
       }
 
       const simplified = decimateLatLngs(latlngs, 6);
-      L.polyline(simplified, style).addTo(linesLayer);
+
+      const polyline = L.polyline(simplified, style).addTo(linesLayer);
+      
+      // ===============================
+      // ✅ POPUP DO ALIMENTADOR
+      // ===============================
+      const displayName =
+        alimentadorCenters[baseKey]?.display || baseKey;
+      
+      const intensity =
+        intensityByBase.get(baseKey) || 0;
+      
+      polyline.bindPopup(
+        `<strong>${displayName}</strong><br>Reiteradas: <b>${intensity}</b>`,
+        {
+          closeButton: true,
+          autoPan: true
+        }
+      );      
     }
 
     if (i < queue.length) requestAnimationFrame(drawBatch);

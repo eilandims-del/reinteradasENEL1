@@ -3,8 +3,13 @@
 // =========================
 /**
  * Charts - Chart.js
- * CAUSA: Pizza (Top 10) + lista clicável com scroll (todas, exceto bloqueadas)
- * ALIMENTADOR: Radar (Top 5) + lista clicável com scroll (todas)
+ * CAUSA: Barras horizontais (Top 10) + lista clicável com scroll (todas, exceto bloqueadas)
+ * ALIMENTADOR: Barras horizontais (Top 5) + lista clicável com scroll (todas)
+ *
+ * 🔥 NOVO:
+ * - Clique no gráfico de ALIMENTADOR dispara evento:
+ *   document.dispatchEvent(new CustomEvent('alimentador:selected', { detail: { nome, qtd, ocorrencias } }))
+ *   (para o mapa reagir sem alterar cards/ranking)
  */
 
 import { openModal, fillDetailsModal } from './modal.js';
@@ -92,61 +97,46 @@ function getReadableTextColor(hex) {
   }
 }
 
-/**
- * Plugin local: escreve % nas fatias do gráfico de pizza
- * (sem depender de chartjs-plugin-datalabels)
- */
-const piePercentLabelsPlugin = {
-  id: 'piePercentLabelsPlugin',
-  afterDatasetsDraw(chart, args, pluginOptions) {
-    if (!chart || chart.config?.type !== 'pie') return;
+// ✅ Plugin de % para BARRAS horizontais
+const barPercentLabelsPlugin = {
+  id: 'barPercentLabelsPlugin',
+  afterDatasetsDraw(chart, args, opts) {
+    const { ctx } = chart;
 
     const datasetIndex = 0;
+    const dataset = chart.data.datasets?.[datasetIndex];
+    if (!dataset || !Array.isArray(dataset.data)) return;
+
     const meta = chart.getDatasetMeta(datasetIndex);
-    if (!meta || !meta.data || !meta.data.length) return;
+    if (!meta?.data?.length) return;
 
-    const dataset = chart.data?.datasets?.[datasetIndex];
-    const data = Array.isArray(dataset?.data) ? dataset.data : [];
-    const bg = Array.isArray(dataset?.backgroundColor) ? dataset.backgroundColor : [];
-
-    const total = data.reduce((acc, v) => acc + (Number(v) || 0), 0);
+    const total = dataset.data.reduce((a, b) => a + (Number(b) || 0), 0);
     if (!total) return;
 
-    const ctx = chart.ctx;
+    const minPctToShow = Number(opts?.minPctToShow ?? 4);
+    const fontSize = Number(opts?.fontSize ?? 12);
+    const fontWeight = String(opts?.fontWeight ?? 900);
+    const fontFamily = String(opts?.fontFamily ?? "'Inter', 'Segoe UI', sans-serif");
+    const color = String(opts?.color ?? '#0A4A8C');
+
     ctx.save();
-
-    // Opções
-    const minPctToShow = pluginOptions?.minPctToShow ?? 4; // não polui fatia pequena
-    const fontSize = pluginOptions?.fontSize ?? 12;
-    const fontWeight = pluginOptions?.fontWeight ?? 800;
-    const fontFamily = pluginOptions?.fontFamily ?? "'Inter', 'Segoe UI', sans-serif";
-
+    ctx.fillStyle = color;
     ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    meta.data.forEach((arcEl, i) => {
-      const value = Number(data[i]) || 0;
-      if (!value) return;
+    meta.data.forEach((barEl, i) => {
+      const v = Number(dataset.data[i] || 0);
+      if (!v) return;
 
-      const pct = (value / total) * 100;
+      const pct = (v / total) * 100;
       if (pct < minPctToShow) return;
 
-      // Centro da fatia
-      const center = arcEl.getCenterPoint ? arcEl.getCenterPoint() : null;
-      if (!center) return;
+      // barra horizontal: "fim" é o x do elemento
+      const x = barEl.x;
+      const y = barEl.y;
 
-      const label = `${pct.toFixed(0)}%`;
-      const bgColor = bg[i] || '#0A4A8C';
-
-      // Borda/sombra leve para legibilidade
-      ctx.fillStyle = getReadableTextColor(bgColor);
-      ctx.shadowColor = 'rgba(0,0,0,0.25)';
-      ctx.shadowBlur = 6;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 1;
-
-      ctx.fillText(label, center.x, center.y);
+      const label = `${pct.toFixed(1)}%`;
+      ctx.fillText(label, x + 8, y);
     });
 
     ctx.restore();
@@ -187,7 +177,16 @@ function renderScrollList(containerId, ranking, tipo, colorByName = null) {
 }
 
 /**
- * CAUSA - Pizza (Top 10)
+ * Helper: dispara evento do alimentador para o mapa reagir
+ */
+function emitAlimentadorSelected(nome, qtd, ocorrencias) {
+  document.dispatchEvent(new CustomEvent('alimentador:selected', {
+    detail: { nome, qtd, ocorrencias }
+  }));
+}
+
+/**
+ * CAUSA - Barras horizontais (Top 10)
  */
 export function renderChartCausa(data) {
   const rankingAll = buildRankingWithOccur(data, 'CAUSA');
@@ -217,7 +216,7 @@ export function renderChartCausa(data) {
   const getColorForCause = (name) => colorMap.get(name) || null;
 
   chartCausa = new Chart(canvas, {
-    type: 'pie',
+    type: 'bar',
     data: {
       labels,
       datasets: [{
@@ -225,12 +224,12 @@ export function renderChartCausa(data) {
         backgroundColor: topColors,
         borderColor: '#FFFFFF',
         borderWidth: 3,
-        hoverBorderWidth: 4,
-        hoverOffset: 8
+        hoverBorderWidth: 4
       }]
     },
     options: {
       responsive: true,
+      indexAxis: 'y',
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
@@ -250,19 +249,19 @@ export function renderChartCausa(data) {
           callbacks: {
             label: (context) => {
               const label = context.label || '';
-              const value = context.parsed || 0;
+              const value = context.parsed?.x ?? context.parsed ?? 0; // bar horizontal -> parsed.x
               const total = context.dataset.data.reduce((a, b) => a + b, 0);
               const pct = total ? ((value / total) * 100).toFixed(1) : '0.0';
               return `${label}: ${value} (${pct}%)`;
             }
           }
         },
-        // configurações do plugin local de % (não é tooltip)
-        piePercentLabelsPlugin: {
-          minPctToShow: 4,   // não polui fatias muito pequenas
+        barPercentLabelsPlugin: {
+          minPctToShow: 4,
           fontSize: 12,
           fontWeight: 900,
-          fontFamily: "'Inter', 'Segoe UI', sans-serif"
+          fontFamily: "'Inter', 'Segoe UI', sans-serif",
+          color: '#0A4A8C'
         }
       },
       onClick: (evt, elements) => {
@@ -274,7 +273,7 @@ export function renderChartCausa(data) {
       },
       animation: { duration: 900, easing: 'easeOutQuart' }
     },
-    plugins: [piePercentLabelsPlugin] // ativa o plugin que desenha % nas fatias
+    plugins: [barPercentLabelsPlugin]
   });
 
   // Lista clicável com scrollbar (todas as causas), com indicador de cor (Top 10)
@@ -282,7 +281,7 @@ export function renderChartCausa(data) {
 }
 
 /**
- * ALIMENTADOR - Radar (Top 5)
+ * ALIMENTADOR - Barras horizontais (Top 5)
  * Obs: busca campo "ALIMENT." (normaliza chaves com/sem ponto)
  */
 export function renderChartAlimentador(data) {
@@ -297,47 +296,25 @@ export function renderChartAlimentador(data) {
   const labels = top.map(x => x.name);
   const values = top.map(x => x.count);
 
+  // cor única (mantém padrão visual de azul)
+  const barColor = '#1E7CE8';
+
   chartAlimentador = new Chart(canvas, {
-    type: 'radar',
+    type: 'bar',
     data: {
       labels,
       datasets: [{
-        label: 'Ocorrências',
         data: values,
-        backgroundColor: 'rgba(30, 124, 232, 0.25)',
-        borderColor: '#1E7CE8',
+        backgroundColor: barColor,
+        borderColor: '#FFFFFF',
         borderWidth: 3,
-        pointBackgroundColor: '#0A4A8C',
-        pointBorderColor: '#FFFFFF',
-        pointBorderWidth: 3,
-        pointRadius: 5,
-        pointHoverBackgroundColor: '#00B4FF',
-        pointHoverBorderColor: '#FFFFFF',
-        pointHoverRadius: 7,
-        pointHoverBorderWidth: 3
+        hoverBorderWidth: 4
       }]
     },
     options: {
       responsive: true,
+      indexAxis: 'y',
       maintainAspectRatio: false,
-      scales: {
-        r: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-            font: { size: 11, weight: '600', family: "'Inter', 'Segoe UI', sans-serif" },
-            color: '#5A6C7D',
-            backdropColor: 'transparent'
-          },
-          grid: { color: 'rgba(30, 124, 232, 0.15)', lineWidth: 1.5 },
-          angleLines: { color: 'rgba(30, 124, 232, 0.1)', lineWidth: 1.5 },
-          pointLabels: {
-            font: { size: 12, weight: '600', family: "'Inter', 'Segoe UI', sans-serif" },
-            color: '#1A1F2E',
-            padding: 10
-          }
-        }
-      },
       plugins: {
         legend: { display: false },
         title: {
@@ -356,24 +333,37 @@ export function renderChartAlimentador(data) {
           callbacks: {
             label: (context) => {
               const label = context.label || '';
-              const value = context.parsed?.r ?? context.parsed ?? 0;
+              const value = context.parsed?.x ?? context.parsed ?? 0;
               return `${label}: ${value}`;
             }
           }
+        },
+        barPercentLabelsPlugin: {
+          minPctToShow: 4,
+          fontSize: 12,
+          fontWeight: 900,
+          fontFamily: "'Inter', 'Segoe UI', sans-serif",
+          color: '#0A4A8C'
         }
       },
+      // ✅ CLIQUE NO ALIMENTADOR: NÃO abre modal; dispara evento pro mapa
       onClick: (evt, elements) => {
         if (!elements || !elements.length) return;
+
         const idx = elements[0].index;
-        const name = labels[idx];
-        const found = top.find(x => x.name === name);
-        if (found) openDetails('ALIMENTADOR', found.name, found.ocorrencias);
+        const nome = labels[idx];
+
+        const found = top.find(x => x.name === nome);
+        if (!found) return;
+
+        emitAlimentadorSelected(found.name, found.count, found.ocorrencias);
       },
-      animation: { duration: 1000, easing: 'easeOutQuart' }
-    }
+      animation: { duration: 900, easing: 'easeOutQuart' }
+    },
+    plugins: [barPercentLabelsPlugin]
   });
 
-  // Para alimentador: dot cinza (não tem pizza com cores individuais)
+  // Lista clicável (mantém o comportamento antigo: abre modal)
   renderScrollList('chartAlimentadorList', rankingAll, 'ALIMENTADOR', null);
 }
 

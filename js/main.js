@@ -567,6 +567,24 @@ function initEventListeners() {
   });
 
   updateAlimentadoresBadge();
+
+  // ✅ Quando clicar em uma barra do Ranking Alimentador, filtra o mapa e mostra info
+document.addEventListener('alimentador:selected', (e) => {
+  const detail = e?.detail || {};
+  const nome = detail.nome || '—';
+  const qtd = Number(detail.qtd || 0);
+  const ocorrencias = Array.isArray(detail.ocorrencias) ? detail.ocorrencias : [];
+
+  const info = document.getElementById('mapHeatInfo');
+  if (info) {
+    info.textContent = `• ${nome} — Reiteradas: ${qtd}`;
+  }
+
+  // ✅ Atualiza o heatmap só com as ocorrências daquele alimentador
+  try { updateHeatmap(ocorrencias); } catch (_) {}
+});
+
+
 }
 
 /**
