@@ -779,7 +779,7 @@ export async function updateHeatmap(data) {
   if (!queue.length) return;
 
   let i = 0;
-  const BATCH = 70;
+  const BATCH = 40;
 
 function drawBatch() {
   if (seq !== renderSeq) return;
@@ -799,7 +799,7 @@ function drawBatch() {
       if (!anyInside) continue;
     }
 
-    const simplified = decimateLatLngs(latlngs, 6);
+    const simplified = decimateLatLngs(latlngs, 10);
 
     const line = L.polyline(simplified, style)
       .bindPopup(`<strong>${display}</strong><br>Reiteradas (total): <b>${intensity}</b>`);
