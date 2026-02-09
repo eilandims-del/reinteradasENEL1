@@ -1414,3 +1414,139 @@ input:focus, select:focus{
   font-weight:900;
   color:#111;
 }
+/* =========================
+   Estruturas (Painel abaixo do mapa)
+========================= */
+.estr-panel{
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: rgba(255,255,255,0.92);
+}
+
+.estr-panel-header{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.estr-title{
+  font-weight: 900;
+  color: var(--dark);
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.estr-status{
+  font-size: .9rem;
+  color: var(--medium-gray);
+  font-weight: 900;
+}
+
+.estr-controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:flex-end;
+}
+
+.estr-group{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-width: 180px;
+}
+
+.estr-group label{
+  font-size: .85rem;
+  font-weight: 900;
+  color: var(--medium-gray);
+}
+
+.estr-group select{
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  padding: 0 .6rem;
+  font-weight: 800;
+}
+
+.estr-checks{ min-width: 190px; }
+.estr-check-row{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  height: 34px;
+  padding: 0 .6rem;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  background:#fff;
+  font-weight: 900;
+}
+
+.estr-panel-body{ margin-top: 10px; }
+
+.estr-list{
+  max-height: 220px;
+  overflow:auto;
+  padding-right: 6px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.estr-item{
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  background:#fff;
+  cursor:pointer;
+}
+
+.estr-item:hover{
+  background: rgba(10, 74, 140, 0.05);
+  border-color: rgba(10, 74, 140, 0.25);
+}
+
+.estr-left{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  min-width: 0;
+}
+
+.estr-name{
+  font-weight: 900;
+  color:#111;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.estr-meta{
+  font-size: .85rem;
+  font-weight: 900;
+  color: var(--medium-gray);
+}
+
+.estr-badge{
+  font-weight: 900;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.10);
+  background: rgba(0,0,0,0.04);
+  color:#111;
+}
+
+.estr-empty{
+  padding: 16px;
+  text-align:center;
+  font-weight: 800;
+  color: var(--medium-gray);
+}

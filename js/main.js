@@ -13,6 +13,7 @@
 import { DataService } from './services/firebase-service.js';
 import { getAllColumns, getOcorrenciasByElemento, normKey, getFieldValue } from './services/data-service.js';
 import { ALIMENTADORES_POR_REGIONAL } from './constants/alimentadores.js';
+import { initEstruturasPanel, updateEstruturasContext } from './components/estruturas-panel.js';
 
 import {
   updateRanking,
@@ -91,6 +92,7 @@ async function init() {
   initModalEvents();
   initEventListeners();
   initMap();
+  initEstruturasPanel();
 
   renderEmptyState();
   setMapRegional('TODOS');
@@ -125,6 +127,9 @@ function renderEmptyState() {
   if (totalEl) totalEl.textContent = 'Reiteradas: 0';
 
   updateAlimentadoresBadge();
+  const estrList = document.getElementById('estrList');
+  if (estrList) estrList.innerHTML = '<div class="estr-empty">Selecione Regional + Período e aplique.</div>';
+
 }
 
 /**
@@ -438,6 +443,17 @@ function renderAll() {
   const rowsFromRankingView = getRankingViewRows();
   updateCharts(rowsFromRankingView);
   updateHeatmap(rowsFromRankingView);
+    // ✅ Atualiza painel de estruturas com base na visão atual (ranking view)
+    try {
+      const catalog = getCatalogForSelectedRegional();
+      updateEstruturasContext({
+        regional: selectedRegional,
+        rows: rowsFromRankingView,
+        catalog,
+        selectedAlimentadores
+      });
+    } catch (_) {}
+  
 
   updateAlimentadoresBadge();
 }
@@ -482,6 +498,7 @@ function initEventListeners() {
     renderEmptyState();
     showToast('Regional selecionada: ATLANTICO. Selecione alimentadores (obrigatório) e depois o período.', 'success');
     openAlimentadoresModal();
+    
   });
 
   document.getElementById('btnRegionalNorte')?.addEventListener('click', async () => {

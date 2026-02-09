@@ -2,11 +2,13 @@
 // FILE: js/components/mapa.js
 // =========================
 import { generateHeatmapByConjunto } from '../services/data-service.js';
+import { loadEstruturasRegionalOnce } from '../services/estruturas-service.js';
 
 let map;
 let heatLayer;
 let markersLayer;
 let linesLayer;
+let estruturasLayer;
 let regionLayer;
 let btnConjRef = null;
 let btnAlimRef = null;
@@ -589,6 +591,7 @@ export function initMap() {
 
   markersLayer = L.layerGroup().addTo(map);
   linesLayer = L.layerGroup().addTo(map);
+  estruturasLayer = L.layerGroup().addTo(map);
 
   ensureMapUI();
   updateMapRegionalLabel();
@@ -612,6 +615,7 @@ export function resetMap() {
   if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
   if (markersLayer) markersLayer.clearLayers();
   if (linesLayer) linesLayer.clearLayers();
+  if (estruturasLayer) estruturasLayer.clearLayers();
 
   if (regionLayer) { try { map.removeLayer(regionLayer); } catch (_) {} regionLayer = null; }
 
@@ -680,6 +684,7 @@ export async function updateHeatmap(data) {
   if (heatLayer) { try { map.removeLayer(heatLayer); } catch (_) {} heatLayer = null; }
   if (markersLayer) markersLayer.clearLayers();
   if (linesLayer) linesLayer.clearLayers();
+  if (estruturasLayer) estruturasLayer.clearLayers();
 
   const regionGeo = await loadRegionGeoJSON(currentRegion);
   if (seq !== renderSeq) return;
@@ -815,4 +820,122 @@ function drawBatch() {
 }
 
   requestAnimationFrame(drawBatch);
+}
+// =========================
+// Estruturas (pinos) - CD / F / R
+// =========================
+function normKey2(v) {
+  return String(v ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getElementoRawFromRow(row) {
+  return String(
+    row?.ELEMENTO ??
+    row?.Elemento ??
+    row?.elemento ??
+    ''
+  ).trim();
+}
+
+function getAlimRawFromRow2(row) {
+  return (
+    row?.['ALIMENT.'] ??
+    row?.['ALIMENT'] ??
+    row?.['ALIMENTADOR'] ??
+    row?.['ALIMENTADOR '] ??
+    row?.['ALIMENT. '] ??
+    ''
+  );
+}
+
+function extractAlimBaseFlex(name) {
+  const n = normKey2(name);
+  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
+  if (!m) return '';
+  return m[1].replace(/\s+/g, '');
+}
+
+function elementToCat(el) {
+  // regra simples (ajuste depois se precisar):
+  // F* -> F, R* -> R, T* -> CD
+  const s = String(el || '').trim().toUpperCase();
+  if (!s) return '';
+  const first = s.charAt(0);
+  if (first === 'F') return 'F';
+  if (first === 'R') return 'R';
+  if (first === 'T') return 'CD';
+  return '';
+}
+
+export async function updateEstruturasPins(rows, opts = {}) {
+  if (!map) initMap();
+  if (!map) return { total: 0, shown: 0 };
+
+  if (estruturasLayer) estruturasLayer.clearLayers();
+
+  const regional = (opts.regional || '').toUpperCase().trim();
+  const catSet = new Set((opts.categories || ['CD','F','R']).map(c => String(c).toUpperCase().trim()));
+  const alimFilter = String(opts.alimentadorBase || 'TODOS').toUpperCase().trim();
+
+  const data = Array.isArray(rows) ? rows : [];
+  if (!data.length) return { total: 0, shown: 0 };
+
+  // 1) Elementos da visão atual (ranking view)
+  //    e filtro opcional por alimentador
+  const wantedElements = new Set();
+
+  for (const r of data) {
+    const el = getElementoRawFromRow(r);
+    if (!el) continue;
+
+    if (alimFilter !== 'TODOS') {
+      const rawAl = getAlimRawFromRow2(r);
+      const base = extractAlimBaseFlex(rawAl);
+      if (String(base || '').toUpperCase() !== alimFilter) continue;
+    }
+
+    const cat = elementToCat(el);
+    if (cat && !catSet.has(cat)) continue;
+
+    wantedElements.add(normKey2(el));
+  }
+
+  if (!wantedElements.size) return { total: 0, shown: 0 };
+
+  // 2) Carrega estruturas da regional
+  const estruturas = await loadEstruturasRegionalOnce(regional);
+  if (!estruturas.length) return { total: 0, shown: 0 };
+
+  // 3) Filtra estruturas que “batem” com os elementos reiterados
+  const matches = estruturas.filter(p => {
+    if (!p?.nameKey) return false;
+    if (!catSet.has(String(p.category || '').toUpperCase())) return false;
+    return wantedElements.has(p.nameKey);
+  });
+
+  if (!matches.length) return { total: estruturas.length, shown: 0 };
+
+  // 4) Desenha pins
+  for (const p of matches) {
+    const marker = L.marker([p.lat, p.lng]).bindPopup(
+      `<strong>${p.name}</strong><br>Cat: <b>${p.category}</b>`
+    );
+    marker.addTo(estruturasLayer);
+  }
+
+  // 5) Ajusta bounds (sem “forçar” demais)
+  try {
+    const b = L.latLngBounds(matches.map(p => [p.lat, p.lng]));
+    if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+  } catch (_) {}
+
+  return { total: estruturas.length, shown: matches.length, matches };
 }

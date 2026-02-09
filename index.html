@@ -227,6 +227,55 @@ FILE: index.html
         </h2>
       
         <div id="mapaCeara" style="width: 100%; height: 420px; border-radius: 14px;"></div>
+
+        <!-- ✅ Painel Estruturas (abaixo do mapa) -->
+    <div id="estruturasPanel" class="estr-panel">
+      <div class="estr-panel-header">
+        <div class="estr-title">
+          <i class="fas fa-map-pin"></i>
+          Estruturas Reiteradas (CD / F / R)
+          <span id="estrStatus" class="estr-status">• aguardando dados</span>
+        </div>
+
+        <div class="estr-controls">
+          <div class="estr-group">
+            <label>Regional</label>
+            <select id="estrRegional">
+              <option value="AUTO">Auto (selecionada)</option>
+              <option value="ATLANTICO">ATLANTICO</option>
+              <option value="NORTE">NORTE</option>
+              <option value="CENTRO NORTE">CENTRO NORTE</option>
+            </select>
+          </div>
+
+          <div class="estr-group">
+            <label>Alimentador</label>
+            <select id="estrAlimentador">
+              <option value="TODOS">TODOS</option>
+            </select>
+          </div>
+
+          <div class="estr-group estr-checks">
+            <label>Categorias</label>
+            <div class="estr-check-row">
+              <label><input type="checkbox" id="estrCatCD" checked> CD</label>
+              <label><input type="checkbox" id="estrCatF" checked> F</label>
+              <label><input type="checkbox" id="estrCatR" checked> R</label>
+            </div>
+          </div>
+
+          <button id="estrRecarregar" class="btn btn-secondary btn-sm" title="Recarregar estruturas">
+            <i class="fas fa-rotate"></i> Atualizar
+          </button>
+        </div>
+      </div>
+
+            <div class="estr-panel-body">
+              <div id="estrList" class="estr-list">
+                <div class="estr-empty">Selecione Regional + Período e aplique. As estruturas aparecem quando houver reiteradas.</div>
+              </div>
+            </div>
+          </div>
       </section>
       
 
