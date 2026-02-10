@@ -670,33 +670,6 @@ function buildIntensityByBaseFromRows(rows) {
   return map;
 }
 
-function getElementoRawFromRow(row) {
-  return String(
-    row?.ELEMENTO ??
-    row?.Elemento ??
-    row?.elemento ??
-    ''
-  ).trim();
-}
-
-function getAlimRawFromRow2(row) {
-  return (
-    row?.['ALIMENT.'] ??
-    row?.['ALIMENT'] ??
-    row?.['ALIMENTADOR'] ??
-    row?.['ALIMENTADOR '] ??
-    row?.['ALIMENT. '] ??
-    ''
-  );
-}
-
-function extractAlimBaseFlex(name) {
-  const n = normKey2(name);
-  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
-  if (!m) return '';
-  return m[1].replace(/\s+/g, '');
-}
-
 // ✅ NOVO: extrai código do elemento (TSZ8821 / RTB0292 / FFF2396 / SEC5218)
 function extractElementoCode(el) {
   const s = normKey2(el);
@@ -869,13 +842,6 @@ function normKey2(v) {
     .trim();
 }
 
-// ✅ NOVO: extrai código do elemento (TSZ8821 / RTB0292 / FFF2396 / SEC5218)
-function extractElementoCode(el) {
-  const s = normKey2(el);
-  const m = s.match(/([A-Z]{2,4}\d{4})/);
-  return m ? m[1] : '';
-}
-
 function getElementoRawFromRow(row) {
   return String(
     row?.ELEMENTO ??
@@ -931,62 +897,36 @@ export async function updateEstruturasPins(rows, opts = {}) {
 
   // 1) Elementos da visão atual (ranking view)
   //    e filtro opcional por alimentador
-      // 1) Elementos (códigos) da visão atual (ranking view)
-    //    e filtro opcional por alimentador + categoria
-    const wantedCodes = new Set();
+  const wantedElements = new Set();
 
-    for (const r of data) {
-      const elRaw = getElementoRawFromRow(r);
-      if (!elRaw) continue;
-    
-      if (alimFilter !== 'TODOS') {
-        const rawAl = getAlimRawFromRow2(r);
-        const base = extractAlimBaseFlex(rawAl);
-        if (String(base || '').toUpperCase() !== alimFilter) continue;
-      }
-    
-      const cat = elementToCat(elRaw);
-      if (cat && !catSet.has(cat)) continue;
-    
-      const code = extractElementoCode(elRaw);
-      if (code) wantedCodes.add(code);
+  for (const r of data) {
+    const el = getElementoRawFromRow(r);
+    if (!el) continue;
+
+    if (alimFilter !== 'TODOS') {
+      const rawAl = getAlimRawFromRow2(r);
+      const base = extractAlimBaseFlex(rawAl);
+      if (String(base || '').toUpperCase() !== alimFilter) continue;
     }
-    
-    if (!wantedCodes.size) return { total: 0, shown: 0 };    
 
+    const cat = elementToCat(el);
+    if (cat && !catSet.has(cat)) continue;
+
+    wantedElements.add(normKey2(el));
+  }
+
+  if (!wantedElements.size) return { total: 0, shown: 0 };
 
   // 2) Carrega estruturas da regional
   const estruturas = await loadEstruturasRegionalOnce(regional);
   if (!estruturas.length) return { total: 0, shown: 0 };
 
   // 3) Filtra estruturas que “batem” com os elementos reiterados
-// helper: extrai ID numérico do ELEMENTO (ex: TLM8264 -> 8264, FEW0665 -> 0665)
-function extractElementoId(el) {
-  const s = String(el || '').toUpperCase().trim();
-  // pega o maior bloco de 3 a 6 dígitos (ajuste se precisar)
-  const m = s.match(/(\d{3,6})/);
-  return m ? m[1] : '';
-}
-
-  // 3) Filtra estruturas que “batem” com os elementos reiterados
-  //    Regra: se o ID do ELEMENTO aparece no nome da estrutura do KMZ, é match.
-  const wantedIds = new Set();
-  for (const k of wantedElements) {
-    const id = extractElementoId(k);
-    if (id) wantedIds.add(id);
-  }
-
   const matches = estruturas.filter(p => {
     if (!p?.nameKey) return false;
     if (!catSet.has(String(p.category || '').toUpperCase())) return false;
-  
-    for (const code of wantedCodes) {
-      if (p.nameKey.includes(code)) return true;
-    }
-    return false;
+    return wantedElements.has(p.nameKey);
   });
-  
-  
 
   if (!matches.length) return { total: estruturas.length, shown: 0 };
 
