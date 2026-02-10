@@ -932,19 +932,17 @@ export async function updateEstruturasPins(rows, opts = {}) {
   //    tenta comparar pelo nameKey, e se não bater, extrai o código do próprio name/nameKey
   const matches = estruturas.filter(p => {
     if (!p) return false;
-
+  
     const pCat = String(p.category || '').toUpperCase().trim();
     if (!catSet.has(pCat)) return false;
-
-    const pCode =
-      extractElementoCode(p.nameKey) ||
-      extractElementoCode(p.name) ||
-      ''; // fallback
-
+  
+    // tenta extrair SEM depender do nameKey
+    const pCode = extractElementoCode(p.name) || extractElementoCode(p.nameKey) || '';
     if (!pCode) return false;
-
+  
     return wantedElements.has(pCode);
   });
+
 
   if (!matches.length) return { total: estruturas.length, shown: 0 };
 
