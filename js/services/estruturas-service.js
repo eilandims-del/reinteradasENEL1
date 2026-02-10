@@ -23,38 +23,50 @@ function normalizeRegionalKey(r) {
 }
 
 /**
- * Extrai um "ID de estrutura" do nome (para bater com ELEMENTO do Firestore)
- * Exemplos típicos: TLM8264, FEW0665, RLG1234, TEC9629 etc
+ * 🔧 Alimentador BASE mais flexível:
+ * aceita 2-4 letras + 2-3 dígitos (ex: TLM82, TLO214, CD12, R123 etc)
  */
-function extractStructureId(name) {
+function extractAlimBase(name) {
   const n = normKey(name);
-  // 1-5 letras + 3-8 dígitos (bem flexível)
-  const m = n.match(/([A-Z]{1,5}\s?\d{3,8})/);
+  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
   if (!m) return '';
   return m[1].replace(/\s+/g, '');
 }
 
 /**
- * Categoria:
- * - Se nome começar com F => F
- * - Se nome começar com R => R
- * - Se nome começar com T => CD (trafos entram como CD no seu conceito)
- * - Se conter "CD" => CD
- * - Se contiver "FUS" => F
- * - Se contiver "REL" => R
+ * ✅ Categoria vem do ICON do Placemark (no seu KMZ: files/CD_P.png, files/F.png, files/R.png)
+ * Fallback: tenta no nome/estilo também.
  */
-function inferCategoryFromName(placemarkName = '') {
-  const n = normKey(placemarkName);
-  if (!n) return '';
+function pickCategoryFromPlacemark(pm, placemarkName = '') {
+  const nameNorm = normKey(placemarkName);
 
-  const first = n.charAt(0);
-  if (first === 'F') return 'F';
-  if (first === 'R') return 'R';
-  if (first === 'T') return 'CD';
+  // 1) Tenta pelo ícone (mais confiável no seu KMZ)
+  const hrefNodes = pm.getElementsByTagName('href');
+  for (const node of Array.from(hrefNodes || [])) {
+    const href = String(node?.textContent || '').trim();
+    if (!href) continue;
 
-  if (n.includes(' CD ' ) || n === 'CD' || n.includes('|CD|') || n.includes('CD')) return 'CD';
-  if (n.includes('FUS')) return 'F';
-  if (n.includes('REL')) return 'R';
+    const up = href.toUpperCase();
+    if (up.includes('/CD') || up.includes('CD_') || up.includes('CD.')) return 'CD';
+    if (up.includes('/F')  || up.endsWith('F.PNG')  || up.includes('F.')) return 'F';
+    if (up.includes('/R')  || up.endsWith('R.PNG')  || up.includes('R.')) return 'R';
+  }
+
+  // 2) Fallback por styleUrl (às vezes vem "#CD" / "#F" / "#R")
+  const styleUrl = pm.getElementsByTagName('styleUrl')[0]?.textContent || '';
+  const styleNorm = normKey(styleUrl);
+  if (styleNorm === 'CD' || styleNorm.includes('CD')) return 'CD';
+  if (styleNorm === 'F'  || styleNorm.includes('F'))  return 'F';
+  if (styleNorm === 'R'  || styleNorm.includes('R'))  return 'R';
+
+  // 3) Fallback por tokens no nome
+  if (nameNorm.startsWith('CD') || nameNorm.includes(' CD ')) return 'CD';
+  if (nameNorm.startsWith('F')  || nameNorm.includes(' F '))  return 'F';
+  if (nameNorm.startsWith('R')  || nameNorm.includes(' R '))  return 'R';
+
+  // 4) Fallback “semântico”
+  if (nameNorm.includes('FUS')) return 'F';
+  if (nameNorm.includes('REL')) return 'R';
 
   return '';
 }
@@ -66,18 +78,16 @@ function parseKmlStructuresPoints(kmlText) {
   const placemarks = Array.from(xml.getElementsByTagName('Placemark'));
   const items = [];
 
-  // DEBUG rápido (pra você ver se está lendo mesmo)
-  console.log('[ESTR][DEBUG] placemarks:', placemarks.length);
-
   for (const pm of placemarks) {
     const nameNode = pm.getElementsByTagName('name')[0];
     const rawName = (nameNode?.textContent || '').trim();
     if (!rawName) continue;
 
-    // Pega o primeiro <coordinates> dentro de <Point>
-    // (funciona mesmo se estiver dentro de MultiGeometry)
+    // precisa ter Point
     const point = pm.getElementsByTagName('Point')[0];
-    const coordsNode = point?.getElementsByTagName('coordinates')[0];
+    if (!point) continue;
+
+    const coordsNode = point.getElementsByTagName('coordinates')[0];
     const coordsText = (coordsNode?.textContent || '').trim();
     if (!coordsText) continue;
 
@@ -86,25 +96,23 @@ function parseKmlStructuresPoints(kmlText) {
     const lng = parts[0], lat = parts[1];
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
-    const category = inferCategoryFromName(rawName);
-    if (!category) continue; // só CD/F/R
+    // ✅ pega categoria pelo ícone do placemark
+    const cat = pickCategoryFromPlacemark(pm, rawName);
+    if (!cat) continue; // só CD/F/R
 
-    const structureId = extractStructureId(rawName);
-    const structureIdKey = normKey(structureId || rawName); // fallback no nome
+    const alimBase = extractAlimBase(rawName);
+    const alimKey = normKey(alimBase);
 
     items.push({
       name: rawName,
-      category,
+      nameKey: normKey(rawName),
+      category: cat,
       lat,
       lng,
-      // chave pra bater com ELEMENTO
-      structureId: structureId || rawName,
-      structureIdKey
+      alimentadorBase: alimBase,
+      alimentadorBaseKey: alimKey
     });
   }
-
-  console.log('[ESTR][DEBUG] points after filter (CD/F/R):', items.length);
-  if (items.length) console.log('[ESTR][DEBUG] sample:', items.slice(0, 5).map(x => x.name));
 
   return items;
 }
@@ -120,13 +128,14 @@ const cache = {
 };
 
 /**
- * ✅ PATHS reais (os que você disse que existem)
+ * ✅ Paths conforme você informou:
+ * assets/estruturas/atlanticoestrutura.kmz
+ * assets/estruturas/norteestrutura.kmz
  */
 const ESTR_FILES = {
   'ATLANTICO': { type: 'kmz', path: 'assets/estruturas/atlanticoestrutura.kmz' },
   'NORTE': { type: 'kmz', path: 'assets/estruturas/norteestrutura.kmz' },
-  // se ainda não tem CN, deixa comentado ou cria depois
-  // 'CENTRO NORTE': { type: 'kmz', path: 'assets/estruturas/centro_norte_estrutura.kmz' }
+  'CENTRO NORTE': { type: 'kmz', path: 'assets/estruturas/centro_norte_estrutura.kmz' } // se você tiver
 };
 
 async function loadKmlTextFromFile(cfg) {
