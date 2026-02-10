@@ -863,17 +863,18 @@ function extractAlimBaseFlex(name) {
   return m[1].replace(/\s+/g, '');
 }
 
-function elementToCat(el) {
-  // regra simples (ajuste depois se precisar):
-  // F* -> F, R* -> R, T* -> CD
-  const s = String(el || '').trim().toUpperCase();
-  if (!s) return '';
-  const first = s.charAt(0);
-  if (first === 'F') return 'F';
-  if (first === 'R') return 'R';
-  if (first === 'T') return 'CD';
-  return '';
-}
+  function elementToCat(el) {
+    const s = String(el || '').trim().toUpperCase();
+    if (!s) return '';
+    const first = s.charAt(0);
+
+    if (first === 'T') return 'CD'; // Trafo
+    if (first === 'R') return 'R';  // Religador
+    if (first === 'F') return 'F';  // Fusível
+    if (first === 'S') return 'F';  // ✅ SEC... tratar como F
+    return '';
+  }
+
 
 export async function updateEstruturasPins(rows, opts = {}) {
   if (!map) initMap();
@@ -890,38 +891,60 @@ export async function updateEstruturasPins(rows, opts = {}) {
 
   // 1) Elementos da visão atual (ranking view)
   //    e filtro opcional por alimentador
-  const wantedElements = new Set();
+      // 1) Elementos (códigos) da visão atual (ranking view)
+    //    e filtro opcional por alimentador + categoria
+    const wantedCodes = new Set();
 
-  for (const r of data) {
-    const el = getElementoRawFromRow(r);
-    if (!el) continue;
+    for (const r of data) {
+      const elRaw = getElementoRawFromRow(r);
+      if (!elRaw) continue;
 
-    if (alimFilter !== 'TODOS') {
-      const rawAl = getAlimRawFromRow2(r);
-      const base = extractAlimBaseFlex(rawAl);
-      if (String(base || '').toUpperCase() !== alimFilter) continue;
+      if (alimFilter !== 'TODOS') {
+        const rawAl = getAlimRawFromRow2(r);
+        const base = extractAlimBaseFlex(rawAl);
+        if (String(base || '').toUpperCase() !== alimFilter) continue;
+      }
+
+      const cat = elementToCat(elRaw);
+      if (cat && !catSet.has(cat)) continue;
+
+      const code = extractElementoCode(elRaw);
+      if (code) wantedCodes.add(code);
     }
 
-    const cat = elementToCat(el);
-    if (cat && !catSet.has(cat)) continue;
+    if (!wantedCodes.size) return { total: 0, shown: 0 };
 
-    // dentro do for (const r of data)...
-    const elNorm = normKey2(el);
-    wantedElements.add(elNorm);
-
-  }
-
-  if (!wantedElements.size) return { total: 0, shown: 0 };
 
   // 2) Carrega estruturas da regional
   const estruturas = await loadEstruturasRegionalOnce(regional);
   if (!estruturas.length) return { total: 0, shown: 0 };
 
   // 3) Filtra estruturas que “batem” com os elementos reiterados
+// helper: extrai ID numérico do ELEMENTO (ex: TLM8264 -> 8264, FEW0665 -> 0665)
+function extractElementoId(el) {
+  const s = String(el || '').toUpperCase().trim();
+  // pega o maior bloco de 3 a 6 dígitos (ajuste se precisar)
+  const m = s.match(/(\d{3,6})/);
+  return m ? m[1] : '';
+}
+
+  // 3) Filtra estruturas que “batem” com os elementos reiterados
+  //    Regra: se o ID do ELEMENTO aparece no nome da estrutura do KMZ, é match.
+  const wantedIds = new Set();
+  for (const k of wantedElements) {
+    const id = extractElementoId(k);
+    if (id) wantedIds.add(id);
+  }
+
   const matches = estruturas.filter(p => {
-    if (!p?.structureIdKey) return false;
+    if (!p?.nameKey) return false;
     if (!catSet.has(String(p.category || '').toUpperCase())) return false;
-    return wantedElements.has(p.structureIdKey);
+  
+    // KMZ pode ter nome com texto extra, então usamos "includes"
+    for (const code of wantedCodes) {
+      if (p.nameKey.includes(code)) return true;
+    }
+    return false;
   });
   
 
