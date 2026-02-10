@@ -881,6 +881,12 @@ function elementToCat(el) {
   return '';
 }
 
+function extractElementoCode(el) {
+  const s = normKey2(el);
+  const m = s.match(/([A-Z]{2,4}\d{4})/); // pega SEC5218, TLM8264, RTB0292...
+  return m ? m[1] : '';
+}
+
 
 export async function updateEstruturasPins(rows, opts = {}) {
   if (!map) initMap();
@@ -900,20 +906,16 @@ export async function updateEstruturasPins(rows, opts = {}) {
   const wantedElements = new Set();
 
   for (const r of data) {
-    const el = getElementoRawFromRow(r);
-    if (!el) continue;
-
-    if (alimFilter !== 'TODOS') {
-      const rawAl = getAlimRawFromRow2(r);
-      const base = extractAlimBaseFlex(rawAl);
-      if (String(base || '').toUpperCase() !== alimFilter) continue;
-    }
-
-    const cat = elementToCat(el);
-    if (cat && !catSet.has(cat)) continue;
-
-    wantedElements.add(normKey2(el));
-  }
+    const rawEl = getElementoRawFromRow(r);
+    if (!rawEl) continue;
+  
+    // ... filtros ...
+  
+    const code = extractElementoCode(rawEl);
+    if (!code) continue;
+  
+    wantedElements.add(code);
+  }  
 
   if (!wantedElements.size) return { total: 0, shown: 0 };
 
