@@ -15,12 +15,13 @@ function normKey(v) {
     .trim();
 }
 
-function extractAlimBaseFlex(name) {
-  const n = normKey(name);
-  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
-  if (!m) return '';
-  return m[1].replace(/\s+/g, '');
+function extractElementoCode(el) {
+  const s = normKey2(el);
+  // pega padrão: 2~4 letras + 4 dígitos (TSZ8821 / RTB0292 / FFF2396 / SEC5218)
+  const m = s.match(/([A-Z]{2,4}\d{4})/);
+  return m ? m[1] : '';
 }
+
 
 let lastCtx = {
   regional: '',
