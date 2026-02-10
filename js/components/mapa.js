@@ -670,6 +670,18 @@ function buildIntensityByBaseFromRows(rows) {
   return map;
 }
 
+function normKey2(v) {
+  return String(v ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getElementoRawFromRow(row) {
   return String(
     row?.ELEMENTO ??
@@ -702,6 +714,19 @@ function extractElementoCode(el) {
   const s = normKey2(el);
   const m = s.match(/([A-Z]{2,4}\d{4})/);
   return m ? m[1] : '';
+}
+
+// ✅ AJUSTADO: categoria (T=CD, R=R, F=F, S=F)
+function elementToCat(el) {
+  const s = String(el || '').trim().toUpperCase();
+  if (!s) return '';
+  const first = s.charAt(0);
+
+  if (first === 'T') return 'CD';
+  if (first === 'R') return 'R';
+  if (first === 'F') return 'F';
+  if (first === 'S') return 'F'; // SEC... como fusível
+  return '';
 }
 
 export async function updateHeatmap(data) {
@@ -869,13 +894,6 @@ function normKey2(v) {
     .trim();
 }
 
-// ✅ NOVO: extrai código do elemento (TSZ8821 / RTB0292 / FFF2396 / SEC5218)
-function extractElementoCode(el) {
-  const s = normKey2(el);
-  const m = s.match(/([A-Z]{2,4}\d{4})/);
-  return m ? m[1] : '';
-}
-
 function getElementoRawFromRow(row) {
   return String(
     row?.ELEMENTO ??
@@ -903,17 +921,17 @@ function extractAlimBaseFlex(name) {
   return m[1].replace(/\s+/g, '');
 }
 
-function elementToCat(el) {
-  const s = String(el || '').trim().toUpperCase();
-  if (!s) return '';
-  const first = s.charAt(0);
+  function elementToCat(el) {
+    const s = String(el || '').trim().toUpperCase();
+    if (!s) return '';
+    const first = s.charAt(0);
 
-  if (first === 'T') return 'CD';
-  if (first === 'R') return 'R';
-  if (first === 'F') return 'F';
-  if (first === 'S') return 'F'; // SEC como fusível
-  return '';
-}
+    if (first === 'T') return 'CD'; // Trafo
+    if (first === 'R') return 'R';  // Religador
+    if (first === 'F') return 'F';  // Fusível
+    if (first === 'S') return 'F';  // ✅ SEC... tratar como F
+    return '';
+  }
 
 
 export async function updateEstruturasPins(rows, opts = {}) {
