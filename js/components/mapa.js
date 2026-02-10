@@ -670,6 +670,64 @@ function buildIntensityByBaseFromRows(rows) {
   return map;
 }
 
+function normKey2(v) {
+  return String(v ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getElementoRawFromRow(row) {
+  return String(
+    row?.ELEMENTO ??
+    row?.Elemento ??
+    row?.elemento ??
+    ''
+  ).trim();
+}
+
+function getAlimRawFromRow2(row) {
+  return (
+    row?.['ALIMENT.'] ??
+    row?.['ALIMENT'] ??
+    row?.['ALIMENTADOR'] ??
+    row?.['ALIMENTADOR '] ??
+    row?.['ALIMENT. '] ??
+    ''
+  );
+}
+
+function extractAlimBaseFlex(name) {
+  const n = normKey2(name);
+  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
+  if (!m) return '';
+  return m[1].replace(/\s+/g, '');
+}
+
+// ✅ NOVO: extrai código do elemento (TSZ8821 / RTB0292 / FFF2396 / SEC5218)
+function extractElementoCode(el) {
+  const s = normKey2(el);
+  const m = s.match(/([A-Z]{2,4}\d{4})/);
+  return m ? m[1] : '';
+}
+
+// ✅ AJUSTADO: categoria (T=CD, R=R, F=F, S=F)
+function elementToCat(el) {
+  const s = String(el || '').trim().toUpperCase();
+  if (!s) return '';
+  const first = s.charAt(0);
+
+  if (first === 'T') return 'CD';
+  if (first === 'R') return 'R';
+  if (first === 'F') return 'F';
+  if (first === 'S') return 'F'; // SEC... como fusível
+  return '';
+}
 
 export async function updateHeatmap(data) {
   lastData = Array.isArray(data) ? data : [];
@@ -898,21 +956,21 @@ export async function updateEstruturasPins(rows, opts = {}) {
     for (const r of data) {
       const elRaw = getElementoRawFromRow(r);
       if (!elRaw) continue;
-
+    
       if (alimFilter !== 'TODOS') {
         const rawAl = getAlimRawFromRow2(r);
         const base = extractAlimBaseFlex(rawAl);
         if (String(base || '').toUpperCase() !== alimFilter) continue;
       }
-
+    
       const cat = elementToCat(elRaw);
       if (cat && !catSet.has(cat)) continue;
-
+    
       const code = extractElementoCode(elRaw);
       if (code) wantedCodes.add(code);
     }
-
-    if (!wantedCodes.size) return { total: 0, shown: 0 };
+    
+    if (!wantedCodes.size) return { total: 0, shown: 0 };    
 
 
   // 2) Carrega estruturas da regional
@@ -940,12 +998,12 @@ function extractElementoId(el) {
     if (!p?.nameKey) return false;
     if (!catSet.has(String(p.category || '').toUpperCase())) return false;
   
-    // KMZ pode ter nome com texto extra, então usamos "includes"
     for (const code of wantedCodes) {
       if (p.nameKey.includes(code)) return true;
     }
     return false;
   });
+  
   
 
   if (!matches.length) return { total: estruturas.length, shown: 0 };
