@@ -6,12 +6,15 @@ import { loadEstruturasRegionalOnce } from '../services/estruturas-service.js';
 
 let map;
 
-// ✅ Base layers (Mapa / Ruas HD / Satélite)
+// ✅ Base layers (Mapa / Satélite)
 let baseLayerOSM;
-let baseLayerStreetsHD;
 let baseLayerSat;
-let baseLayerSatLabels;
-let currentBase = 'OSM'; // 'OSM' | 'STREETS' | 'SAT'
+
+// ✅ Overlays (somente no Satélite): ruas + labels
+let overlaySatRoads;
+let overlaySatLabels;
+
+let currentBase = 'OSM'; // 'OSM' | 'SAT'
 
 let heatLayer;
 let markersLayer;
@@ -461,7 +464,7 @@ function drawRegionBoundary(geojson, label) {
 }
 
 /* =========================
-   UI (sem painel alimentadores)
+   UI
 ========================= */
 function ensureMapUI() {
   if (uiMounted) return;
@@ -495,10 +498,9 @@ function ensureMapUI() {
     </div>
 
     <div style="margin-top:10px;">Base:</div>
-    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+    <div style="display:flex; gap:6px;">
       <button id="btnBaseOSM">Mapa</button>
-      <button id="btnBaseSTR">Ruas (HD)</button>
-      <button id="btnBaseSAT">Satélite</button>
+      <button id="btnBaseSAT">Satélite + Ruas</button>
     </div>
 
     <div style="margin-top:10px; font-size: 11px; color: #444; font-weight: 900;">
@@ -516,13 +518,10 @@ function ensureMapUI() {
 
   const btnConj = box.querySelector('#btnModeConj');
   const btnAlim = box.querySelector('#btnModeAlim');
-
   btnConjRef = btnConj;
   btnAlimRef = btnAlim;
 
-  // ✅ Base map buttons
   const btnBaseOSM = box.querySelector('#btnBaseOSM');
-  const btnBaseSTR = box.querySelector('#btnBaseSTR');
   const btnBaseSAT = box.querySelector('#btnBaseSAT');
 
   const paintButtons = () => {
@@ -532,32 +531,37 @@ function ensureMapUI() {
 
   const paintBaseButtons = () => {
     btnBaseOSM.style.cssText = styleBtnBase + (currentBase === 'OSM' ? styleActive : styleInactive);
-    btnBaseSTR.style.cssText = styleBtnBase + (currentBase === 'STREETS' ? styleActive : styleInactive);
     btnBaseSAT.style.cssText = styleBtnBase + (currentBase === 'SAT' ? styleActive : styleInactive);
   };
 
   function setBase(kind) {
     if (!map) return;
 
-    // remove todas as bases
+    // remove bases
     try {
       if (baseLayerOSM) map.removeLayer(baseLayerOSM);
-      if (baseLayerStreetsHD) map.removeLayer(baseLayerStreetsHD);
       if (baseLayerSat) map.removeLayer(baseLayerSat);
-      if (baseLayerSatLabels) map.removeLayer(baseLayerSatLabels);
+    } catch (_) {}
+
+    // remove overlays
+    try {
+      if (overlaySatRoads) map.removeLayer(overlaySatRoads);
+      if (overlaySatLabels) map.removeLayer(overlaySatLabels);
     } catch (_) {}
 
     if (kind === 'OSM') {
       if (baseLayerOSM) map.addLayer(baseLayerOSM);
       map.setMaxZoom(18);
       currentBase = 'OSM';
-    } else if (kind === 'STREETS') {
-      if (baseLayerStreetsHD) map.addLayer(baseLayerStreetsHD);
-      map.setMaxZoom(20);
-      currentBase = 'STREETS';
-    } else if (kind === 'SAT') {
+    } else {
       if (baseLayerSat) map.addLayer(baseLayerSat);
-      if (baseLayerSatLabels) map.addLayer(baseLayerSatLabels);
+
+      // ✅ overlays por cima (ruas + nomes)
+      if (overlaySatRoads) map.addLayer(overlaySatRoads);
+      if (overlaySatLabels) map.addLayer(overlaySatLabels);
+
+      // OBS: se você colocar 19 e o provedor não tiver tile, aparece “quadrado cinza”.
+      // 18 é o mais seguro. Se quiser testar 19, troque aqui.
       map.setMaxZoom(18);
       currentBase = 'SAT';
     }
@@ -580,7 +584,6 @@ function ensureMapUI() {
   });
 
   btnBaseOSM.addEventListener('click', () => setBase('OSM'));
-  btnBaseSTR.addEventListener('click', () => setBase('STREETS'));
   btnBaseSAT.addEventListener('click', () => setBase('SAT'));
 
   if (!legendMounted) {
@@ -632,38 +635,28 @@ export function initMap() {
 
   map = L.map('mapaCeara').setView([-4.8, -39.5], 7);
 
-  // ✅ Base layers
+  // ✅ Base OSM
   baseLayerOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '© OpenStreetMap'
   });
 
-  // ✅ Ruas (HD) — zoom mais próximo + nomes de ruas melhores
-  baseLayerStreetsHD = L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    {
-      subdomains: 'abcd',
-      maxZoom: 20,
-      attribution: '© OpenStreetMap © CARTO'
-    }
-  );
-
-  // ✅ Satélite (Esri)
+  // ✅ Satélite (imagem)
   baseLayerSat = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    {
-      maxZoom: 18,
-      attribution: 'Tiles © Esri'
-    }
+    { maxZoom: 18, attribution: 'Tiles © Esri' }
   );
 
-  // ✅ Labels (Esri) para satélite (nomes/limites)
-  baseLayerSatLabels = L.tileLayer(
+  // ✅ Overlay: ruas (linhas)
+  overlaySatRoads = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18, attribution: 'Roads © Esri' }
+  );
+
+  // ✅ Overlay: labels (nomes)
+  overlaySatLabels = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    {
-      maxZoom: 18,
-      attribution: 'Labels © Esri'
-    }
+    { maxZoom: 18, attribution: 'Labels © Esri' }
   );
 
   // começa no OSM
@@ -903,7 +896,7 @@ export async function updateHeatmap(data) {
 
 /* =========================
    Estruturas (pinos) - CD / F / R
-   + popup com Reiteradas e Alimentador (pelo dataset do card)
+   + popup com Reiteradas e Alimentador
 ========================= */
 function normKey2(v) {
   return String(v ?? '')
@@ -974,7 +967,6 @@ export async function updateEstruturasPins(rows, opts = {}) {
   const data = Array.isArray(rows) ? rows : [];
   if (!data.length) return { total: 0, shown: 0 };
 
-  // wanted codes + contagem/alim pelo dataset do card
   const wantedElements = new Set();
   const elemCount = new Map();     // code -> qtd
   const elemAlimCount = new Map(); // code -> Map(alim -> qtd)
@@ -994,7 +986,6 @@ export async function updateEstruturasPins(rows, opts = {}) {
     const rawEl = getElementoRawFromRow(r);
     if (!rawEl) continue;
 
-    // filtro por alimentador
     if (alimFilter !== 'TODOS') {
       const rawAl = getAlimRawFromRow2(r);
       const base = extractAlimBaseFlex(rawAl);
@@ -1002,7 +993,6 @@ export async function updateEstruturasPins(rows, opts = {}) {
       if (String(base).toUpperCase() !== alimFilter) continue;
     }
 
-    // filtro por categoria
     const cat = elementToCat(rawEl);
     if (cat && !catSet.has(cat)) continue;
 
@@ -1024,11 +1014,9 @@ export async function updateEstruturasPins(rows, opts = {}) {
 
   if (!wantedElements.size) return { total: 0, shown: 0 };
 
-  // carrega estruturas da regional
   const estruturas = await loadEstruturasRegionalOnce(regional);
   if (!estruturas.length) return { total: 0, shown: 0 };
 
-  // match robusto
   const matches = estruturas.filter(p => {
     if (!p) return false;
 
