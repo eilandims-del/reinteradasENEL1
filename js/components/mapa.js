@@ -9,6 +9,7 @@ let map;
 // ✅ Base layers (Mapa / Satélite)
 let baseLayerOSM;
 let baseLayerSat;
+let baseLayerSatLabels;
 let currentBase = 'OSM'; // 'OSM' | 'SAT'
 
 let heatLayer;
@@ -547,19 +548,35 @@ function ensureMapUI() {
 
   btnBaseOSM.addEventListener('click', () => {
     if (currentBase === 'OSM') return;
-    try { if (baseLayerSat) map.removeLayer(baseLayerSat); } catch (_) {}
-    try { if (baseLayerOSM) baseLayerOSM.addTo(map); } catch (_) {}
+  
+    // remove satélite e labels
+    if (baseLayerSat) map.removeLayer(baseLayerSat);
+    if (baseLayerSatLabels) map.removeLayer(baseLayerSatLabels);
+  
+    // adiciona mapa padrão
+    if (baseLayerOSM) map.addLayer(baseLayerOSM);
+  
+    map.setMaxZoom(18);
     currentBase = 'OSM';
     paintBaseButtons();
   });
+  
 
   btnBaseSAT.addEventListener('click', () => {
     if (currentBase === 'SAT') return;
-    try { if (baseLayerOSM) map.removeLayer(baseLayerOSM); } catch (_) {}
-    try { if (baseLayerSat) baseLayerSat.addTo(map); } catch (_) {}
+  
+    // remove mapa padrão
+    if (baseLayerOSM) map.removeLayer(baseLayerOSM);
+  
+    // adiciona satélite + labels
+    if (baseLayerSat) map.addLayer(baseLayerSat);
+    if (baseLayerSatLabels) map.addLayer(baseLayerSatLabels);
+  
+    map.setMaxZoom(18);
     currentBase = 'SAT';
     paintBaseButtons();
   });
+  
 
   if (!legendMounted) {
     legendMounted = true;
@@ -618,8 +635,14 @@ export function initMap() {
 
   baseLayerSat = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 19, attribution: 'Tiles © Esri' }
+    { maxZoom: 18 }
   );
+  
+  baseLayerSatLabels = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 18 }
+  );
+  
 
   // começa no OSM
   baseLayerOSM.addTo(map);
