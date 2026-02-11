@@ -1,12 +1,11 @@
 // =========================
 // FILE: js/components/modal-alimentadores-catalog.js
 // =========================
+
 import { openModal, closeModal } from './modal.js';
 import {
   getCatalogForRegional,
-  getBlocosForRegional,
-  getMunicipiosForBloco,
-  getAlimentadoresByMunicipio,
+  getAlimentadoresByConjunto,
   getAllAlimentadoresForRegional
 } from '../services/alimentadores-catalog.js';
 
@@ -22,15 +21,6 @@ function normKey(v) {
     .trim();
 }
 
-/**
- * ✅ Modal: Regional -> Bloco -> Município -> Alimentadores
- * IDs (index.html):
- *  modalAlimentadores, alimListModal, alimHintModal, alimSearchModal,
- *  btnAlimAllModal, btnAlimClearModal, btnConfirmarAlimModal
- *
- * Dispara:
- *  alimentadores:changed { regional, mode, blocos, municipios, alimentadores }
- */
 export function setupAlimentadoresCatalogModal(opts = {}) {
   const {
     getSelectedRegional = () => '',
@@ -54,9 +44,20 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
   let selected = new Set(); // normKey(alimentador)
   let lastRegional = '';
 
-  function matchesSearch(text, term) {
-    if (!term) return true;
-    return normKey(text).includes(normKey(term));
+  function dispatchChanged(regional, mode) {
+    const all = getAllAlimentadoresForRegional(regional);
+    const selectedArr = Array.from(selected);
+
+    document.dispatchEvent(
+      new CustomEvent('alimentadores:changed', {
+        detail: {
+          regional,
+          mode, // 'TODOS' | 'CUSTOM'
+          conjuntos: [], // opcional (você não está usando isso agora)
+          alimentadores: mode === 'TODOS' ? all : selectedArr
+        }
+      })
+    );
   }
 
   function renderHint(regional) {
@@ -81,161 +82,111 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
     hintEl.innerHTML = `Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.`;
   }
 
-  function dispatchChanged(regional, mode) {
-    const all = getAllAlimentadoresForRegional(regional);
-
-    const blocosSelecionados = new Set();
-    const municipiosSelecionados = new Set();
-
-    getBlocosForRegional(regional).forEach(bl => {
-      const municipios = getMunicipiosForBloco(regional, bl);
-      municipios.forEach(m => {
-        const alims = getAlimentadoresByMunicipio(regional, bl, m);
-        const hasAny = alims.some(a => selected.has(normKey(a)));
-        if (hasAny) {
-          blocosSelecionados.add(bl);
-          municipiosSelecionados.add(m);
-        }
-      });
-    });
-
-    document.dispatchEvent(
-      new CustomEvent('alimentadores:changed', {
-        detail: {
-          regional,
-          mode, // 'TODOS' | 'CUSTOM'
-          blocos: Array.from(blocosSelecionados),
-          municipios: Array.from(municipiosSelecionados),
-          alimentadores: mode === 'TODOS' ? all : Array.from(selected)
-        }
-      })
-    );
+  function matchesSearch(text, term) {
+    if (!term) return true;
+    return normKey(text).includes(normKey(term));
   }
 
   function renderList(regional) {
     listEl.innerHTML = '';
 
     const catalog = getCatalogForRegional(regional);
-    const blocos = (catalog && Array.isArray(catalog.blocos)) ? catalog.blocos : [];
+    const conjuntos = (catalog && Array.isArray(catalog.conjuntos)) ? catalog.conjuntos : [];
 
-    if (!blocos.length) {
-      listEl.innerHTML =
-        `<div style="padding:12px; color:#666; font-weight:800;">Catálogo não encontrado para esta regional.</div>`;
+    if (!conjuntos.length) {
+      listEl.innerHTML = `<div style="padding:12px; color:#666; font-weight:800;">Catálogo não encontrado para esta regional.</div>`;
       renderHint(regional);
       return;
     }
 
     const term = String(searchEl?.value || '').trim();
 
-    blocos.forEach(bloco => {
-      const municipios = getMunicipiosForBloco(regional, bloco);
-      if (!municipios.length) return;
+    conjuntos.forEach(conj => {
+      const alims = getAlimentadoresByConjunto(regional, conj);
+      if (!alims.length) return;
 
-      // se nada do bloco passa na busca, não mostra o bloco
-      const anyBlockVisible = municipios.some(m => {
-        const alims = getAlimentadoresByMunicipio(regional, bloco, m);
-        return alims.some(a => matchesSearch(`${bloco} ${m} ${a}`, term));
-      });
-      if (!anyBlockVisible) return;
+      // filtro de busca: se nada no grupo bater, não renderiza
+      const anyVisible = alims.some(a => matchesSearch(`${conj} ${a}`, term));
+      if (!anyVisible) return;
 
-      // ---- Card do Bloco ----
-      const card = document.createElement('div');
-      card.style.border = '1px solid rgba(0,0,0,0.10)';
-      card.style.borderRadius = '14px';
-      card.style.padding = '12px';
-      card.style.background = 'rgba(255,255,255,0.95)';
-      card.style.marginTop = '12px';
+      const block = document.createElement('div');
+      block.className = 'alim-block';
+      block.style.border = '1px solid rgba(0,0,0,0.08)';
+      block.style.borderRadius = '12px';
+      block.style.padding = '10px';
+      block.style.background = 'rgba(255,255,255,0.92)';
+      block.style.marginTop = '10px';
 
-      const blocoHeader = document.createElement('div');
-      blocoHeader.style.display = 'flex';
-      blocoHeader.style.alignItems = 'center';
-      blocoHeader.style.justifyContent = 'space-between';
-      blocoHeader.style.gap = '10px';
+      // ===== HEADER DO CONJUNTO (mantém) =====
+      const headerConj = document.createElement('div');
+      headerConj.style.fontWeight = '900';
+      headerConj.style.marginBottom = '10px';
+      headerConj.style.display = 'flex';
+      headerConj.style.alignItems = 'center';
+      headerConj.style.gap = '8px';
+      headerConj.innerHTML = `🔷 <span>${conj}</span>`;
+      block.appendChild(headerConj);
 
-      const blocoTitle = document.createElement('div');
-      blocoTitle.style.fontWeight = '950';
-      blocoTitle.style.fontSize = '0.95rem';
-      blocoTitle.innerHTML = `🔷 <span>${bloco}</span>`;
+      // ===== Agora: o conj (ex: "Acaraú", "Marco") é representado como subgrupos? =====
+      // No seu catálogo atual você já está usando "BLOCO X" como conjunto.
+      // Então dentro dele, os alimentadores já são a lista direta.
+      // Para continuar exibindo como você está vendo (com cidades),
+      // a cidade está vindo no próprio label do alimentador? NÃO.
+      // Então vamos fazer o agrupamento por "prefixo" caso você esteja usando isso.
+      //
+      // ✅ Regra prática:
+      // - Se você quer "Acaraú" / "Marco" dentro do BLOCO, você precisa
+      //   que o catálogo traga esses subgrupos como chaves. Ex:
+      //   "BLOCO ACARAÚ - Acaraú": [...]
+      //   "BLOCO ACARAÚ - Marco": [...]
+      //
+      // Como no seu print isso já existe, então aqui vamos detectar:
+      // se o conj tiver " - " vamos separar (Bloco - Cidade)
+      //
+      // Porém, no seu print o bloco já aparece e abaixo aparecem as cidades,
+      // então seu catálogo provavelmente já está no formato:
+      // "BLOCO ACARAÚ" (conj) e dentro do array você está renderizando subheaders manualmente.
+      //
+      // Para não quebrar sua estrutura atual, vamos assumir que você quer
+      // o subheader por cidade pelo texto "📍 Cidade" que você já estava montando
+      // no render anterior. Então: vamos reconstruir a lógica para gerar subgrupos
+      // a partir de um "mapa" que vem embutido no próprio array? (não temos)
+      //
+      // ✅ SOLUÇÃO SEM INVENTAR:
+      // Se você quer mesmo "Acaraú"/"Marco" como subgrupos, o certo é o catálogo
+      // já devolver isso separado. Então vamos suportar OS DOIS formatos:
+      // 1) Conjunto normal (sem subgrupos): lista direta
+      // 2) Conjunto com subgrupos: se o "conj" vier como "BLOCO ACARAÚ - Acaraú"
+      //
+      // Como você já tem isso acontecendo na UI, vou implementar o formato 2
+      // com agrupamento por chave do conjunto quando tiver " - ".
+      //
+      // Então: primeiro, vamos criar um agrupamento local de subgrupos por "cidade"
+      // quando o conj vier no formato "BLOCO X - Cidade".
+      //
+      // Mas aqui estamos iterando por conj (cada conj é uma chave única).
+      // Logo, se seu catálogo estiver no formato "BLOCO X - Cidade", o header do bloco
+      // acima não deve ficar como "BLOCO X - Cidade".
+      //
+      // ✅ Melhor: detectar e separar:
+      const parts = String(conj).split(' - ').map(s => s.trim()).filter(Boolean);
+      const blocoName = parts[0] || conj;
+      const cidadeName = parts[1] || ''; // se houver
 
-      // checkbox: selecionar tudo do bloco
-      const blocoToggle = document.createElement('input');
-      blocoToggle.type = 'checkbox';
+      // se tinha " - ", ajusta o header do bloco para só BLOCO
+      if (parts.length >= 2) {
+        headerConj.innerHTML = `🔷 <span>${blocoName}</span>`;
+      }
 
-      const allBlocoAlims = [];
-      municipios.forEach(m => {
-        getAlimentadoresByMunicipio(regional, bloco, m).forEach(a => allBlocoAlims.push(a));
-      });
-      const allBlocoSelected = allBlocoAlims.length > 0 && allBlocoAlims.every(a => selected.has(normKey(a)));
-      blocoToggle.checked = allBlocoSelected;
-
-      blocoToggle.onchange = () => {
-        if (blocoToggle.checked) {
-          allBlocoAlims.forEach(a => selected.add(normKey(a)));
-        } else {
-          allBlocoAlims.forEach(a => selected.delete(normKey(a)));
-        }
-        renderList(regional);
-      };
-
-      blocoHeader.appendChild(blocoTitle);
-      blocoHeader.appendChild(blocoToggle);
-      card.appendChild(blocoHeader);
-
-      // ---- Municípios ----
-      municipios.forEach(municipio => {
-        const alims = getAlimentadoresByMunicipio(regional, bloco, municipio);
-        if (!alims.length) return;
-
-        const anyMunicipioVisible = alims.some(a => matchesSearch(`${bloco} ${municipio} ${a}`, term));
-        if (!anyMunicipioVisible) return;
-
-        const muniWrap = document.createElement('div');
-        muniWrap.style.marginTop = '12px';
-
-        const muniTitle = document.createElement('div');
-        muniTitle.style.fontWeight = '900';
-        muniTitle.style.color = 'var(--medium-gray)';
-        muniTitle.style.marginBottom = '8px';
-        muniTitle.innerHTML = `📍 <span>${municipio}</span>`;
-        muniWrap.appendChild(muniTitle);
-
+      // Se NÃO tiver cidade (conjunto "normal"), renderiza lista simples
+      if (!cidadeName) {
         const grid = document.createElement('div');
         grid.style.display = 'grid';
         grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(120px, 1fr))';
         grid.style.gap = '8px';
 
-        // checkbox: selecionar tudo do município
-        // (fica no topo da grid como "chip" especial)
-        const muniAllChip = document.createElement('label');
-        muniAllChip.style.display = 'flex';
-        muniAllChip.style.alignItems = 'center';
-        muniAllChip.style.justifyContent = 'space-between';
-        muniAllChip.style.padding = '8px 10px';
-        muniAllChip.style.borderRadius = '10px';
-        muniAllChip.style.border = '1px dashed rgba(0,0,0,0.25)';
-        muniAllChip.style.background = 'rgba(0,0,0,0.03)';
-        muniAllChip.style.cursor = 'pointer';
-        muniAllChip.style.fontWeight = '900';
-        muniAllChip.innerHTML = `<span>Selecionar ${municipio}</span>`;
-
-        const muniToggle = document.createElement('input');
-        muniToggle.type = 'checkbox';
-        muniToggle.style.transform = 'scale(1.05)';
-
-        const allMuniSelected = alims.every(a => selected.has(normKey(a)));
-        muniToggle.checked = allMuniSelected;
-
-        muniToggle.onchange = () => {
-          if (muniToggle.checked) alims.forEach(a => selected.add(normKey(a)));
-          else alims.forEach(a => selected.delete(normKey(a)));
-          renderList(regional);
-        };
-
-        muniAllChip.appendChild(muniToggle);
-        grid.appendChild(muniAllChip);
-
         alims.forEach(a => {
-          if (!matchesSearch(`${bloco} ${municipio} ${a}`, term)) return;
+          if (!matchesSearch(`${conj} ${a}`, term)) return;
 
           const key = normKey(a);
           const checked = selected.has(key);
@@ -265,26 +216,117 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
             if (input.checked) selected.add(key);
             else selected.delete(key);
             renderHint(regional);
-            // atualiza toggles sem rerender parcial (força rerender total por consistência)
-            // (simples e seguro)
-            // blocoToggle/muniToggle recalculam no renderList
           };
 
           chip.onclick = (e) => {
             if (e.target?.tagName?.toLowerCase() === 'input') return;
             input.checked = !input.checked;
             input.dispatchEvent(new Event('change'));
-            renderList(regional);
           };
 
           grid.appendChild(chip);
         });
 
-        muniWrap.appendChild(grid);
-        card.appendChild(muniWrap);
+        block.appendChild(grid);
+        listEl.appendChild(block);
+        renderHint(regional);
+        return;
+      }
+
+      // ✅ Se tiver cidadeName: cria SUBHEADER com checkbox (seleciona tudo da cidade)
+      const cityRow = document.createElement('div');
+      cityRow.className = 'alim-city-row';
+      cityRow.style.display = 'flex';
+      cityRow.style.alignItems = 'center';
+      cityRow.style.justifyContent = 'space-between';
+      cityRow.style.gap = '10px';
+      cityRow.style.margin = '6px 0 10px 0';
+      cityRow.style.padding = '8px 10px';
+      cityRow.style.borderRadius = '10px';
+      cityRow.style.border = '1px solid rgba(0,0,0,0.10)';
+      cityRow.style.background = 'rgba(0,0,0,0.03)';
+      cityRow.style.fontWeight = '900';
+
+      const leftCity = document.createElement('label');
+      leftCity.style.display = 'flex';
+      leftCity.style.alignItems = 'center';
+      leftCity.style.gap = '10px';
+      leftCity.style.cursor = 'pointer';
+
+      const cityToggle = document.createElement('input');
+      cityToggle.type = 'checkbox';
+
+      const allInCitySelected = alims.every(a => selected.has(normKey(a)));
+      cityToggle.checked = allInCitySelected;
+
+      cityToggle.onchange = () => {
+        if (cityToggle.checked) alims.forEach(a => selected.add(normKey(a)));
+        else alims.forEach(a => selected.delete(normKey(a)));
+
+        renderList(regional); // re-render para atualizar checks
+      };
+
+      const cityNameEl = document.createElement('span');
+      cityNameEl.textContent = cidadeName;
+
+      leftCity.appendChild(cityToggle);
+      leftCity.appendChild(cityNameEl);
+
+      cityRow.appendChild(leftCity);
+      block.appendChild(cityRow);
+
+      // grid alimentadores (da cidade)
+      const grid = document.createElement('div');
+      grid.style.display = 'grid';
+      grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(120px, 1fr))';
+      grid.style.gap = '8px';
+
+      alims.forEach(a => {
+        if (!matchesSearch(`${conj} ${a}`, term)) return;
+
+        const key = normKey(a);
+        const checked = selected.has(key);
+
+        const chip = document.createElement('label');
+        chip.className = 'alim-chip';
+        chip.style.display = 'flex';
+        chip.style.alignItems = 'center';
+        chip.style.justifyContent = 'space-between';
+        chip.style.padding = '8px 10px';
+        chip.style.borderRadius = '10px';
+        chip.style.border = checked ? '2px solid #0A4A8C' : '1px solid rgba(0,0,0,0.12)';
+        chip.style.background = checked ? 'rgba(10,74,140,0.10)' : '#fff';
+        chip.style.cursor = 'pointer';
+        chip.style.fontWeight = '900';
+
+        chip.innerHTML = `
+          <span style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" ${checked ? 'checked' : ''} style="transform:scale(1.05);" />
+            <span>${a}</span>
+          </span>
+        `;
+
+        const input = chip.querySelector('input');
+
+        input.onchange = () => {
+          if (input.checked) selected.add(key);
+          else selected.delete(key);
+
+          renderHint(regional);
+          cityToggle.checked = alims.every(x => selected.has(normKey(x)));
+        };
+
+        chip.onclick = (e) => {
+          if (e.target?.tagName?.toLowerCase() === 'input') return;
+          input.checked = !input.checked;
+          input.dispatchEvent(new Event('change'));
+        };
+
+        grid.appendChild(chip);
       });
 
-      listEl.appendChild(card);
+      block.appendChild(grid);
+      listEl.appendChild(block);
     });
 
     renderHint(regional);
@@ -300,15 +342,13 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
     }
 
     const catalog = getCatalogForRegional(regional);
-    if (!catalog || !Array.isArray(catalog.blocos) || !catalog.blocos.length) {
-      listEl.innerHTML =
-        `<div style="padding:12px; color:#666; font-weight:800;">Catálogo não encontrado para ${regional}.</div>`;
+    if (!catalog || !Array.isArray(catalog.conjuntos) || !catalog.conjuntos.length) {
+      listEl.innerHTML = `<div style="padding:12px; color:#666; font-weight:800;">Catálogo não encontrado para ${regional}.</div>`;
       hintEl.innerHTML = '';
       openModal(modalId);
       return;
     }
 
-    // ao trocar regional, zera seleção (não vaza)
     if (regional !== lastRegional) {
       selected = new Set();
       lastRegional = regional;

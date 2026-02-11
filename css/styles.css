@@ -1577,3 +1577,250 @@ input:focus, select:focus{
 #modalAlimentadores .alim-content {
   padding: 12px;
 }
+#modalAlimentadores .alim-city-row input[type="checkbox"]{
+  transform: scale(1.05);
+}
+/* =========================================================
+   MODAL ALIMENTADORES (UI mais limpa e profissional)
+   Alvo: #modalAlimentadores
+   Cole no FINAL do styles.css
+========================================================= */
+
+#modalAlimentadores.modal .modal-content {
+  width: min(920px, 96vw);
+  max-height: 86vh;
+  border-radius: 16px;
+  overflow: hidden;               /* header fixo + body scroll */
+  box-shadow: 0 22px 60px rgba(0,0,0,.22);
+}
+
+/* HEADER do modal */
+#modalAlimentadores .modal-header {
+  padding: 12px 14px;
+  background: #0b57d0;
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,.18);
+}
+
+#modalAlimentadores .modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: .2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#modalAlimentadores .modal-close {
+  width: 38px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+#modalAlimentadores .modal-close:hover {
+  background: rgba(255,255,255,.18);
+}
+
+/* BODY com scroll */
+#modalAlimentadores .modal-body {
+  padding: 0;                     /* vamos controlar por blocos */
+  background: #f6f8fc;
+}
+
+/* ===== Barra superior FIXA (TODOS / Limpar / Buscar / Hint / Confirmar) =====
+   Essa é a área do retângulo vermelho (fica fixa enquanto rola a lista) */
+#modalAlimentadores .alim-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(246,248,252,.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding: 10px 12px;
+}
+
+/* layout da topbar */
+#modalAlimentadores .alim-topbar-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* botões menores e consistentes (somente dentro do modal) */
+#modalAlimentadores .alim-topbar .btn {
+  padding: 7px 10px;
+  font-size: .85rem;
+  border-radius: 10px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+/* input buscar menor e com foco bonito */
+#modalAlimentadores #alimSearchModal {
+  height: 34px !important;
+  min-width: 220px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.14);
+  background: #fff;
+  font-size: .9rem;
+  outline: none;
+}
+
+#modalAlimentadores #alimSearchModal:focus {
+  border-color: rgba(11,87,208,.55);
+  box-shadow: 0 0 0 3px rgba(11,87,208,.15);
+}
+
+/* hint mais discreto e legível */
+#modalAlimentadores #alimHintModal {
+  margin-top: 8px;
+  font-size: .88rem;
+  color: rgba(0,0,0,.60);
+  font-weight: 800;
+}
+
+/* Botão CONFIRMAR (posição onde você desenhou) */
+#modalAlimentadores .alim-confirm {
+  margin-left: auto;              /* empurra pra direita */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: #0b57d0;
+  color: #fff;
+  font-weight: 950;
+  font-size: .85rem;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(11,87,208,.20);
+}
+
+#modalAlimentadores .alim-confirm:hover {
+  filter: brightness(1.03);
+}
+
+#modalAlimentadores .alim-confirm:active {
+  transform: translateY(1px);
+}
+
+/* ===== Área rolável da lista ===== */
+#modalAlimentadores #alimListModal {
+  padding: 12px;
+  overflow: auto;
+  max-height: calc(86vh - 56px - 86px); /* ajusta header + topbar */
+}
+
+/* Bloco (BLOCO ACARAÚ etc) */
+#modalAlimentadores .alim-block {
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  margin-top: 12px;
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+}
+
+/* Header do bloco */
+#modalAlimentadores .alim-block > div:first-child {
+  font-size: .95rem;
+  font-weight: 950;
+  color: rgba(0,0,0,.78);
+  margin-bottom: 10px;
+}
+
+/* Linha da "Cidade" (checkbox + nome) */
+#modalAlimentadores .alim-city-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: rgba(11,87,208,.06);
+  margin: 10px 0 10px 0;
+}
+
+#modalAlimentadores .alim-city-row label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 950;
+  color: rgba(0,0,0,.72);
+}
+
+#modalAlimentadores .alim-city-row input[type="checkbox"] {
+  transform: scale(1.05);
+}
+
+/* Grid de chips */
+#modalAlimentadores .alim-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: .86rem;
+  transition: transform .05s ease, background .12s ease, border-color .12s ease;
+}
+
+#modalAlimentadores .alim-chip:hover {
+  background: rgba(11,87,208,.04);
+  border-color: rgba(11,87,208,.22);
+}
+
+#modalAlimentadores .alim-chip input[type="checkbox"] {
+  transform: scale(1.05);
+}
+
+/* Quando selecionado (se você aplica via inline style, isso mantém consistente) */
+#modalAlimentadores .alim-chip[style*="border: 2px"] {
+  background: rgba(11,87,208,.08) !important;
+}
+
+/* Melhor grid responsivo (menos “tudo junto”) */
+#modalAlimentadores .alim-block > div:last-child {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap: 10px !important;
+}
+
+/* Mobile: chips maiores e 2 colunas */
+@media (max-width: 520px) {
+  #modalAlimentadores .modal-content {
+    width: 96vw;
+    max-height: 90vh;
+  }
+
+  #modalAlimentadores #alimListModal {
+    padding: 10px;
+    max-height: calc(90vh - 56px - 92px);
+  }
+
+  #modalAlimentadores .alim-block > div:last-child {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  #modalAlimentadores .alim-confirm {
+    width: 100%;
+    justify-content: center;
+    margin-left: 0;
+  }
+}
