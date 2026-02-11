@@ -42,10 +42,20 @@ let kmlLoadPromise = null;
 // ====== REGIONAIS (KML/KMZ) ======
 const REGION_FILES = {
   'TODOS': null,
+
+  // 🔹 região (polígono)
   'CENTRO NORTE': { type: 'kml', path: 'assets/doc.kml' },
+
+  // 🔹 NOVO: estruturas da Centro Norte
+  'CENTRO NORTE ESTRUTURA': { 
+    type: 'kmz', 
+    path: 'assets/centronorteestrutura.kmz' 
+  },
+
   'ATLANTICO': { type: 'kmz', path: 'assets/atlantico.kmz' },
   'NORTE': { type: 'kmz', path: 'assets/norte.kmz' }
 };
+
 
 let currentRegion = 'TODOS';
 let regionGeoJSONCache = {}; // key -> geojson | null
