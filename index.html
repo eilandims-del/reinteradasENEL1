@@ -334,63 +334,60 @@ FILE: index.html
     </div>
   </div>
 
+
 <!-- Modal - Alimentadores -->
 <div id="modalAlimentadores" class="modal">
   <div class="modal-content modal-sm">
     <div class="modal-header">
       <h2><i class="fas fa-diagram-project"></i> Selecionar Alimentadores</h2>
 
-      <!-- ✅ ID correto pro main.js -->
       <button id="fecharModalAlim" class="modal-close" title="Fechar">
         <i class="fas fa-times"></i>
       </button>
     </div>
 
     <div class="modal-body">
-      <!-- ✅ Barra de ações -->
-      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-        <!-- ✅ IDs corretos -->
-        <button id="btnAlimAllModal" class="btn btn-primary btn-sm" title="Selecionar TODOS (modo sem filtro)">
-          <i class="fas fa-list"></i> TODOS
-        </button>
+      <!-- ✅ TOPBAR FIXA (fica presa no topo quando rolar) -->
+      <div class="alim-topbar">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <button id="btnAlimAllModal" class="btn btn-primary btn-sm" title="Selecionar TODOS (modo sem filtro)">
+            <i class="fas fa-list"></i> TODOS
+          </button>
 
-        <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" title="Limpar seleção (obrigará escolher novamente)">
-          <i class="fas fa-eraser"></i> Limpar
-        </button>
+          <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" title="Limpar seleção">
+            <i class="fas fa-eraser"></i> Limpar
+          </button>
 
-        <div style="flex:1 1 auto;"></div>
+          <div style="flex:1 1 auto;"></div>
 
-        <!-- ✅ ID correto -->
-        <input
-          id="alimSearchModal"
-          type="text"
-          placeholder="Buscar alimentador..."
-          style="height:32px; min-width:220px; padding:0 .6rem; border-radius:10px; border:1px solid #ddd;"
-        >
+          <!-- ✅ CONFIRMAR AGORA NO TOPO -->
+          <button id="btnConfirmarAlimModal" class="btn btn-primary btn-sm" title="Confirmar seleção">
+            <i class="fas fa-check"></i> CONFIRMAR
+          </button>
+        </div>
+
+        <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <input
+            id="alimSearchModal"
+            type="text"
+            placeholder="Buscar alimentador..."
+            style="height:32px; min-width:220px; padding:0 .6rem; border-radius:10px; border:1px solid #ddd;"
+          >
+
+          <div id="alimHintModal" style="font-size:0.9rem; color: var(--medium-gray); font-weight:800;">
+            Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.
+          </div>
+        </div>
       </div>
 
-      <!-- ✅ Dica / status -->
-      <div id="alimHintModal" style="margin-top:10px; font-size:0.9rem; color: var(--medium-gray); font-weight:800;">
-        Escolha <b>TODOS</b> ou selecione 1+ alimentadores.
-      </div>
-
-      <!-- ✅ Lista (checkboxes) -->
-      <div id="alimListModal" style="margin-top:12px; display:flex; flex-direction:column; gap:8px;"></div>
-
-      <!-- ✅ Rodapé com botões: Aplicar + Confirmar -->
-      <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:10px;">
-        <!-- ✅ NOVO: aplicar diretamente se já tiver data -->
-       <!-- <button id="btnAplicarAlimModal" class="btn btn-secondary">
-          <i class="fas fa-bolt"></i> Aplicar
-        </button> -->
-
-        <button id="btnConfirmarAlimModal" class="btn btn-primary">
-          <i class="fas fa-check"></i> Confirmar
-        </button>
+      <!-- ✅ CONTEÚDO ROLÁVEL -->
+      <div class="alim-content">
+        <div id="alimListModal" style="display:flex; flex-direction:column; gap:8px;"></div>
       </div>
     </div>
   </div>
 </div>
+
 
   <!-- Toast Notification -->
   <div id="toast" class="toast">

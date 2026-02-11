@@ -1550,3 +1550,30 @@ input:focus, select:focus{
   font-weight: 800;
   color: var(--medium-gray);
 }
+/* ===== Modal Alimentadores: Topbar fixa ===== */
+
+#modalAlimentadores .modal-content {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+#modalAlimentadores .modal-body {
+  overflow-y: auto;      /* quem rola é o body */
+  padding: 0;            /* vamos controlar padding por blocos */
+}
+
+/* faixa fixa */
+#modalAlimentadores .alim-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #fff;
+  padding: 12px;
+  border-bottom: 1px solid rgba(0,0,0,0.10);
+}
+
+/* conteúdo rolável abaixo */
+#modalAlimentadores .alim-content {
+  padding: 12px;
+}

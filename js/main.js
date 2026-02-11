@@ -478,14 +478,6 @@ async function init() {
     alimModal.open();
   });
 
-  // ✅ bloquear fechar modal se não tiver seleção
-  window.__beforeCloseModal = (modalId) => {
-    if (modalId !== 'modalAlimentadores') return true;
-    const ok = validateAlimentadoresSelection(true);
-    if (!ok) showToast('Escolha TODOS ou selecione 1+ alimentadores antes de fechar.', 'error');
-    return ok;
-  };
-
   // ✅ recebe seleção do modal
   document.addEventListener('alimentadores:changed', async (e) => {
     const d = e?.detail || {};
