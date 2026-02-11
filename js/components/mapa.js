@@ -36,26 +36,14 @@ let alimentadorCenters = {};
 // alimentadorBaseNorm -> array de linhas (cada linha = [[lat,lng],...])
 let alimentadorLines = {};
 
-// lock para não carregar KML duas vezes em paralelo
-let kmlLoadPromise = null;
-
 // ====== REGIONAIS (KML/KMZ) ======
+// ⚠️ Aqui é APENAS limite/polígono (para desenhar borda / filtrar pontos).
 const REGION_FILES = {
   'TODOS': null,
-
-  // 🔹 região (polígono)
   'CENTRO NORTE': { type: 'kml', path: 'assets/doc.kml' },
-
-  // 🔹 NOVO: estruturas da Centro Norte
-  'CENTRO NORTE ESTRUTURA': { 
-    type: 'kmz', 
-    path: 'assets/centronorteestrutura.kmz' 
-  },
-
   'ATLANTICO': { type: 'kmz', path: 'assets/atlantico.kmz' },
   'NORTE': { type: 'kmz', path: 'assets/norte.kmz' }
 };
-
 
 let currentRegion = 'TODOS';
 let regionGeoJSONCache = {}; // key -> geojson | null
@@ -261,7 +249,7 @@ function pointInGeoJSON(lat, lng, geojson) {
 }
 
 /* =========================
-   KML (Alimentador lines) - usa doc.kml
+   KML (Alimentador lines)
 ========================= */
 const ALIM_FILES = {
   'CENTRO NORTE': { type: 'kml', path: 'assets/doc.kml' },
@@ -570,8 +558,7 @@ function ensureMapUI() {
       if (overlaySatRoads) map.addLayer(overlaySatRoads);
       if (overlaySatLabels) map.addLayer(overlaySatLabels);
 
-      // OBS: se você colocar 19 e o provedor não tiver tile, aparece “quadrado cinza”.
-      // 18 é o mais seguro. Se quiser testar 19, troque aqui.
+      // 18 é o mais seguro (19 pode dar “tile vazio” dependendo da área)
       map.setMaxZoom(18);
       currentBase = 'SAT';
     }
@@ -906,7 +893,6 @@ export async function updateHeatmap(data) {
 
 /* =========================
    Estruturas (pinos) - CD / F / R
-   + popup com Reiteradas e Alimentador
 ========================= */
 function normKey2(v) {
   return String(v ?? '')
@@ -947,9 +933,10 @@ function getAlimRawFromRow2(row) {
   );
 }
 
+// ✅ FIX: agora aceita 2–4 letras + 2–4 dígitos (TLM8264 / FEW0665 / TLOB214 etc)
 function extractAlimBaseFlex(name) {
   const n = normKey2(name);
-  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
+  const m = n.match(/([A-Z]{2,4}\s?\d{2,4})/);
   if (!m) return '';
   return m[1].replace(/\s+/g, '');
 }

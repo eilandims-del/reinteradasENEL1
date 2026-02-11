@@ -19,52 +19,70 @@ function normalizeRegionalKey(r) {
   if (v === 'CENTRO NORTE' || v === 'CENTRO_NORTE' || v === 'CENTRONORTE') return 'CENTRO NORTE';
   if (v === 'ATLANTICO' || v === 'ATLÂNTICO') return 'ATLANTICO';
   if (v === 'NORTE') return 'NORTE';
+  if (v === 'TODOS') return 'TODOS';
   return v || 'TODOS';
 }
 
 /**
  * 🔧 Alimentador BASE mais flexível:
- * aceita 2-4 letras + 2-3 dígitos (ex: TLM82, TLO214, CD12, R123 etc)
+ * aceita 2-4 letras + 2-4 dígitos
+ * exemplos:
+ * - TLM82
+ * - TLO214
+ * - TLM8264
+ * - FEW0665
+ * - CD12
+ * - R123
  */
 function extractAlimBase(name) {
   const n = normKey(name);
-  const m = n.match(/([A-Z]{2,4}\s?\d{2,3})/);
+  const m = n.match(/([A-Z]{2,4}\s?\d{2,4})/);
   if (!m) return '';
   return m[1].replace(/\s+/g, '');
 }
 
 /**
- * ✅ Categoria vem do ICON do Placemark (no seu KMZ: files/CD_P.png, files/F.png, files/R.png)
- * Fallback: tenta no nome/estilo também.
+ * ✅ Categoria vem do ICON do Placemark
+ * (no KMZ pode vir como: files/CD_P.png, files/F.png, files/R.png, etc)
+ * Fallback: tenta no styleUrl e no nome.
  */
 function pickCategoryFromPlacemark(pm, placemarkName = '') {
   const nameNorm = normKey(placemarkName);
 
-  // 1) Tenta pelo ícone (mais confiável no seu KMZ)
+  // 1) ÍCONE (mais confiável)
   const hrefNodes = pm.getElementsByTagName('href');
   for (const node of Array.from(hrefNodes || [])) {
     const href = String(node?.textContent || '').trim();
     if (!href) continue;
 
-    const up = href.toUpperCase();
-    if (up.includes('/CD') || up.includes('CD_') || up.includes('CD.')) return 'CD';
-    if (up.includes('/F')  || up.endsWith('F.PNG')  || up.includes('F.')) return 'F';
-    if (up.includes('/R')  || up.endsWith('R.PNG')  || up.includes('R.')) return 'R';
+    // pega só o "nome do arquivo" do ícone
+    const file = href.split('/').pop()?.toUpperCase() || '';
+
+    // exemplos comuns
+    // CD_P.PNG understanding CD / CD_P / CD-... etc
+    if (file.startsWith('CD') && file.endsWith('.PNG')) return 'CD';
+    if (file.startsWith('F')  && file.endsWith('.PNG')) return 'F';
+    if (file.startsWith('R')  && file.endsWith('.PNG')) return 'R';
+
+    // fallback se vier com sufixos
+    if (file.includes('CD') && file.endsWith('.PNG')) return 'CD';
+    if (file.includes('F')  && file.endsWith('.PNG')) return 'F';
+    if (file.includes('R')  && file.endsWith('.PNG')) return 'R';
   }
 
-  // 2) Fallback por styleUrl (às vezes vem "#CD" / "#F" / "#R")
+  // 2) styleUrl (às vezes vem "#CD" / "#F" / "#R" ou algo parecido)
   const styleUrl = pm.getElementsByTagName('styleUrl')[0]?.textContent || '';
   const styleNorm = normKey(styleUrl);
   if (styleNorm === 'CD' || styleNorm.includes('CD')) return 'CD';
   if (styleNorm === 'F'  || styleNorm.includes('F'))  return 'F';
   if (styleNorm === 'R'  || styleNorm.includes('R'))  return 'R';
 
-  // 3) Fallback por tokens no nome
+  // 3) tokens no nome
   if (nameNorm.startsWith('CD') || nameNorm.includes(' CD ')) return 'CD';
   if (nameNorm.startsWith('F')  || nameNorm.includes(' F '))  return 'F';
   if (nameNorm.startsWith('R')  || nameNorm.includes(' R '))  return 'R';
 
-  // 4) Fallback “semântico”
+  // 4) fallback “semântico”
   if (nameNorm.includes('FUS')) return 'F';
   if (nameNorm.includes('REL')) return 'R';
 
@@ -83,8 +101,8 @@ function parseKmlStructuresPoints(kmlText) {
     const rawName = (nameNode?.textContent || '').trim();
     if (!rawName) continue;
 
-    // precisa ter Point
-    const point = pm.getElementsByTagName('Point')[0];
+    // ✅ procura Point, mesmo se estiver dentro de MultiGeometry
+    let point = pm.getElementsByTagName('Point')[0];
     if (!point) continue;
 
     const coordsNode = point.getElementsByTagName('coordinates')[0];
@@ -96,7 +114,6 @@ function parseKmlStructuresPoints(kmlText) {
     const lng = parts[0], lat = parts[1];
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
 
-    // ✅ pega categoria pelo ícone do placemark
     const cat = pickCategoryFromPlacemark(pm, rawName);
     if (!cat) continue; // só CD/F/R
 
@@ -128,14 +145,15 @@ const cache = {
 };
 
 /**
- * ✅ Paths conforme você informou:
+ * ✅ Ajuste conforme seus arquivos reais:
  * assets/estruturas/atlanticoestrutura.kmz
  * assets/estruturas/norteestrutura.kmz
+ * assets/estruturas/centronorteestrutura.kmz
  */
 const ESTR_FILES = {
   'ATLANTICO': { type: 'kmz', path: 'assets/estruturas/atlanticoestrutura.kmz' },
   'NORTE': { type: 'kmz', path: 'assets/estruturas/norteestrutura.kmz' },
-  'CENTRO NORTE': { type: 'kmz', path: 'assets/estruturas/centronorteestrutura.kmz' },
+  'CENTRO NORTE': { type: 'kmz', path: 'assets/estruturas/centronorteestrutura.kmz' }
 };
 
 async function loadKmlTextFromFile(cfg) {
@@ -149,11 +167,14 @@ async function loadKmlTextFromFile(cfg) {
 
   // KMZ
   if (!window.JSZip) throw new Error('JSZip não encontrado');
+
   const res = await fetch(cfg.path, { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
 
   const zip = await window.JSZip.loadAsync(buf);
+
+  // ✅ pega o primeiro .kml encontrado
   const kmlFileName = Object.keys(zip.files).find(n => n.toLowerCase().endsWith('.kml'));
   if (!kmlFileName) throw new Error('KMZ sem arquivo .kml interno');
 
