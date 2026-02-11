@@ -6,11 +6,12 @@ import { loadEstruturasRegionalOnce } from '../services/estruturas-service.js';
 
 let map;
 
-// ✅ Base layers (Mapa / Satélite)
+// ✅ Base layers (Mapa / Ruas HD / Satélite)
 let baseLayerOSM;
+let baseLayerStreetsHD;
 let baseLayerSat;
 let baseLayerSatLabels;
-let currentBase = 'OSM'; // 'OSM' | 'SAT'
+let currentBase = 'OSM'; // 'OSM' | 'STREETS' | 'SAT'
 
 let heatLayer;
 let markersLayer;
@@ -494,8 +495,9 @@ function ensureMapUI() {
     </div>
 
     <div style="margin-top:10px;">Base:</div>
-    <div style="display:flex; gap:6px;">
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
       <button id="btnBaseOSM">Mapa</button>
+      <button id="btnBaseSTR">Ruas (HD)</button>
       <button id="btnBaseSAT">Satélite</button>
     </div>
 
@@ -518,8 +520,9 @@ function ensureMapUI() {
   btnConjRef = btnConj;
   btnAlimRef = btnAlim;
 
-  // ✅ Base map buttons (DENTRO do ensureMapUI)
+  // ✅ Base map buttons
   const btnBaseOSM = box.querySelector('#btnBaseOSM');
+  const btnBaseSTR = box.querySelector('#btnBaseSTR');
   const btnBaseSAT = box.querySelector('#btnBaseSAT');
 
   const paintButtons = () => {
@@ -529,8 +532,38 @@ function ensureMapUI() {
 
   const paintBaseButtons = () => {
     btnBaseOSM.style.cssText = styleBtnBase + (currentBase === 'OSM' ? styleActive : styleInactive);
+    btnBaseSTR.style.cssText = styleBtnBase + (currentBase === 'STREETS' ? styleActive : styleInactive);
     btnBaseSAT.style.cssText = styleBtnBase + (currentBase === 'SAT' ? styleActive : styleInactive);
   };
+
+  function setBase(kind) {
+    if (!map) return;
+
+    // remove todas as bases
+    try {
+      if (baseLayerOSM) map.removeLayer(baseLayerOSM);
+      if (baseLayerStreetsHD) map.removeLayer(baseLayerStreetsHD);
+      if (baseLayerSat) map.removeLayer(baseLayerSat);
+      if (baseLayerSatLabels) map.removeLayer(baseLayerSatLabels);
+    } catch (_) {}
+
+    if (kind === 'OSM') {
+      if (baseLayerOSM) map.addLayer(baseLayerOSM);
+      map.setMaxZoom(18);
+      currentBase = 'OSM';
+    } else if (kind === 'STREETS') {
+      if (baseLayerStreetsHD) map.addLayer(baseLayerStreetsHD);
+      map.setMaxZoom(20);
+      currentBase = 'STREETS';
+    } else if (kind === 'SAT') {
+      if (baseLayerSat) map.addLayer(baseLayerSat);
+      if (baseLayerSatLabels) map.addLayer(baseLayerSatLabels);
+      map.setMaxZoom(18);
+      currentBase = 'SAT';
+    }
+
+    paintBaseButtons();
+  }
 
   btnConj.addEventListener('click', async () => {
     if (mode === 'CONJUNTO') return;
@@ -546,37 +579,9 @@ function ensureMapUI() {
     await updateHeatmap(lastData);
   });
 
-  btnBaseOSM.addEventListener('click', () => {
-    if (currentBase === 'OSM') return;
-  
-    // remove satélite e labels
-    if (baseLayerSat) map.removeLayer(baseLayerSat);
-    if (baseLayerSatLabels) map.removeLayer(baseLayerSatLabels);
-  
-    // adiciona mapa padrão
-    if (baseLayerOSM) map.addLayer(baseLayerOSM);
-  
-    map.setMaxZoom(18);
-    currentBase = 'OSM';
-    paintBaseButtons();
-  });
-  
-
-  btnBaseSAT.addEventListener('click', () => {
-    if (currentBase === 'SAT') return;
-  
-    // remove mapa padrão
-    if (baseLayerOSM) map.removeLayer(baseLayerOSM);
-  
-    // adiciona satélite + labels
-    if (baseLayerSat) map.addLayer(baseLayerSat);
-    if (baseLayerSatLabels) map.addLayer(baseLayerSatLabels);
-  
-    map.setMaxZoom(18);
-    currentBase = 'SAT';
-    paintBaseButtons();
-  });
-  
+  btnBaseOSM.addEventListener('click', () => setBase('OSM'));
+  btnBaseSTR.addEventListener('click', () => setBase('STREETS'));
+  btnBaseSAT.addEventListener('click', () => setBase('SAT'));
 
   if (!legendMounted) {
     legendMounted = true;
@@ -633,19 +638,37 @@ export function initMap() {
     attribution: '© OpenStreetMap'
   });
 
+  // ✅ Ruas (HD) — zoom mais próximo + nomes de ruas melhores
+  baseLayerStreetsHD = L.tileLayer(
+    'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    {
+      subdomains: 'abcd',
+      maxZoom: 20,
+      attribution: '© OpenStreetMap © CARTO'
+    }
+  );
+
+  // ✅ Satélite (Esri)
   baseLayerSat = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 18 }
+    {
+      maxZoom: 18,
+      attribution: 'Tiles © Esri'
+    }
   );
-  
+
+  // ✅ Labels (Esri) para satélite (nomes/limites)
   baseLayerSatLabels = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { maxZoom: 18 }
+    {
+      maxZoom: 18,
+      attribution: 'Labels © Esri'
+    }
   );
-  
 
   // começa no OSM
   baseLayerOSM.addTo(map);
+  map.setMaxZoom(18);
   currentBase = 'OSM';
 
   markersLayer = L.layerGroup().addTo(map);
