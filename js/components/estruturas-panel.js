@@ -45,7 +45,7 @@ function setList(items = []) {
     div.innerHTML = `
       <div class="estr-left">
         <div class="estr-name">${p.name}</div>
-        <div class="estr-meta">Cat: <b>${p.category}</b> • (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>
+        <div class="estr-meta">• (${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</div>
       </div>
       <div class="estr-badge">${p.category}</div>
     `;
