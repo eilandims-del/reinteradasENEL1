@@ -1973,3 +1973,256 @@ input:focus, select:focus{
   border: 2px solid rgba(21,101,192,0.65);
   background: rgba(21,101,192,0.08);
 }
+/* =========================================================
+   MODAL ALIMENTADORES (FINAL LIMPO + RESPONSIVO)
+   - Topbar fixa (TODOS / Limpar / Buscar / Hint / Confirmar)
+   - Grid sem “buracos” e sem overflow
+   - “Cidade” com checkbox ao lado do nome (sem emoji / sem botão quadrado)
+========================================================= */
+
+#modalAlimentadores.modal .modal-content{
+  width: min(920px, 96vw);
+  max-height: 88vh;
+  border-radius: 16px;
+  overflow: hidden; /* header + body com scroll interno */
+}
+
+/* Header do modal */
+#modalAlimentadores .modal-header{
+  background: #0b57d0;
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 16px 16px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+#modalAlimentadores .modal-header h2{
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#modalAlimentadores .modal-close{
+  width: 40px;
+  height: 34px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#modalAlimentadores .modal-close:hover{
+  background: rgba(255,255,255,.18);
+}
+
+/* Body */
+#modalAlimentadores .modal-body{
+  padding: 0;
+  background: #f6f8fc;
+  overflow: auto; /* quem rola é o body */
+}
+
+/* ===== TOPBAR FIXA ===== */
+#modalAlimentadores .alim-topbar{
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  background: rgba(246,248,252,.94);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding: 10px 12px;
+}
+
+#modalAlimentadores .alim-topbar-row{
+  display: grid;
+  grid-template-columns: auto auto 1fr auto; /* TODOS | Limpar | Buscar | Confirmar */
+  gap: 10px;
+  align-items: center;
+}
+
+#modalAlimentadores #alimSearchModal{
+  height: 34px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.14);
+  background: #fff;
+  font-size: .9rem;
+}
+
+#modalAlimentadores #alimSearchModal:focus{
+  outline: none;
+  border-color: rgba(11,87,208,.55);
+  box-shadow: 0 0 0 3px rgba(11,87,208,.15);
+}
+
+#modalAlimentadores #alimHintModal{
+  margin-top: 8px;
+  font-size: .88rem;
+  color: rgba(0,0,0,.62);
+  font-weight: 800;
+}
+
+/* botões da topbar (somente dentro do modal) */
+#modalAlimentadores .alim-topbar .btn{
+  padding: 7px 10px;
+  font-size: .85rem;
+  border-radius: 10px;
+  line-height: 1;
+  font-weight: 900;
+}
+
+/* confirmar no topo (direita) */
+#modalAlimentadores .alim-confirm{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: #0b57d0;
+  color: #fff;
+  font-weight: 950;
+  font-size: .85rem;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(11,87,208,.18);
+}
+
+#modalAlimentadores .alim-confirm:hover{ filter: brightness(1.03); }
+#modalAlimentadores .alim-confirm:active{ transform: translateY(1px); }
+
+/* ===== LISTA ===== */
+#modalAlimentadores #alimListModal{
+  padding: 12px;
+}
+
+/* BLOCO (ex: BLOCO ACARAÚ) */
+#modalAlimentadores .alim-block{
+  background: #fff;
+  border: 1px solid rgba(0,0,0,.10);
+  border-radius: 14px;
+  padding: 12px;
+  margin: 12px 0;
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+}
+
+/* título do bloco */
+#modalAlimentadores .alim-block-title,
+#modalAlimentadores .alim-block > div:first-child{
+  font-weight: 950;
+  color: rgba(0,0,0,.80);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== CIDADE: checkbox ao lado do nome (sem emoji, sem botão quadrado) ===== */
+#modalAlimentadores .alim-city{
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0,0,0,.06);
+}
+
+#modalAlimentadores .alim-city-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#modalAlimentadores .alim-city-left{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 950;
+  color: rgba(0,0,0,.72);
+}
+
+#modalAlimentadores .alim-city-left input[type="checkbox"]{
+  width: 16px;
+  height: 16px;
+}
+
+/* ===== GRID (corrige “buracos” e overflow) ===== */
+#modalAlimentadores .alim-grid{
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+/* ===== CHIP (corrigido: sem justify-content: space-between) ===== */
+#modalAlimentadores .alim-chip{
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start; /* <- essencial pra não criar espaços bizarros */
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 900;
+  font-size: .86rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+#modalAlimentadores .alim-chip input{
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+#modalAlimentadores .alim-chip span{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#modalAlimentadores .alim-chip:hover{
+  background: rgba(11,87,208,.04);
+  border-color: rgba(11,87,208,.22);
+}
+
+/* quando marcado (se no JS você alternar class) */
+#modalAlimentadores .alim-chip.is-checked{
+  border: 2px solid rgba(11,87,208,.55);
+  background: rgba(11,87,208,.08);
+}
+
+/* ===== MOBILE ===== */
+@media (max-width: 720px){
+  #modalAlimentadores .alim-topbar-row{
+    grid-template-columns: 1fr 1fr;
+  }
+  #modalAlimentadores #alimSearchModal{
+    grid-column: 1 / -1;
+  }
+  #modalAlimentadores .alim-confirm{
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 420px){
+  #modalAlimentadores .alim-grid{
+    grid-template-columns: 1fr 1fr;
+  }
+}
