@@ -1824,3 +1824,152 @@ input:focus, select:focus{
     margin-left: 0;
   }
 }
+/* =========================
+   Modal Alimentadores (profissional)
+========================= */
+
+.alim-modal { max-width: 820px; }
+.alim-header { background: #1565c0; color: #fff; }
+.alim-header .modal-close {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.alim-body { padding: 0; }
+
+.alim-toolbar{
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f7f9fc;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  grid-auto-rows: min-content;
+  gap: 10px;
+  align-items: center;
+}
+
+.alim-search{
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.15);
+  padding: 0 10px;
+  outline: none;
+  background: #fff;
+}
+
+.alim-confirm{
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.alim-hint{
+  grid-column: 1 / -1;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #5f6b7a;
+  padding-top: 2px;
+}
+
+.alim-list{
+  max-height: 58vh;
+  overflow: auto;
+  padding: 12px;
+}
+
+.alim-empty{
+  padding: 14px;
+  font-weight: 800;
+  color: #6b7280;
+  background: #fff;
+  border: 1px dashed rgba(0,0,0,0.18);
+  border-radius: 12px;
+}
+
+.alim-block{
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 6px 18px rgba(16,24,40,0.06);
+}
+
+.alim-block-title{
+  font-weight: 900;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.alim-diamond{
+  color: #1565c0;
+}
+
+.alim-city{
+  border-top: 1px solid rgba(0,0,0,0.06);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.alim-city-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.alim-city-left{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 900;
+  color: #1f2937;
+}
+
+.alim-city-left input[type="checkbox"]{
+  width: 16px;
+  height: 16px;
+}
+
+.alim-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.alim-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(0,0,0,0.14);
+  border-radius: 12px;
+  padding: 8px 10px;
+  background: #fff;
+  font-weight: 900;
+  color: #0f172a;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .08s ease, border-color .08s ease, background .08s ease;
+}
+
+.alim-chip input{
+  width: 16px;
+  height: 16px;
+}
+
+.alim-chip:hover{
+  transform: translateY(-1px);
+  border-color: rgba(21,101,192,0.45);
+}
+
+.alim-chip.is-checked{
+  border: 2px solid rgba(21,101,192,0.65);
+  background: rgba(21,101,192,0.08);
+}

@@ -337,8 +337,8 @@ FILE: index.html
 
 <!-- Modal - Alimentadores -->
 <div id="modalAlimentadores" class="modal">
-  <div class="modal-content modal-sm">
-    <div class="modal-header">
+  <div class="modal-content modal-sm alim-modal">
+    <div class="modal-header alim-header">
       <h2><i class="fas fa-diagram-project"></i> Selecionar Alimentadores</h2>
 
       <button id="fecharModalAlim" class="modal-close" title="Fechar">
@@ -346,47 +346,39 @@ FILE: index.html
       </button>
     </div>
 
-    <div class="modal-body">
-      <!-- ✅ TOPBAR FIXA (fica presa no topo quando rolar) -->
-      <div class="alim-topbar">
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-          <button id="btnAlimAllModal" class="btn btn-primary btn-sm" title="Selecionar TODOS (modo sem filtro)">
-            <i class="fas fa-list"></i> TODOS
-          </button>
+    <div class="modal-body alim-body">
+      <!-- ✅ TOPBAR FIXA -->
+      <div class="alim-toolbar">
+        <button id="btnAlimAllModal" class="btn btn-primary btn-sm" title="Selecionar TODOS">
+          <i class="fas fa-list"></i> TODOS
+        </button>
 
-          <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" title="Limpar seleção">
-            <i class="fas fa-eraser"></i> Limpar
-          </button>
+        <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" title="Limpar seleção">
+          <i class="fas fa-eraser"></i> Limpar
+        </button>
 
-          <div style="flex:1 1 auto;"></div>
+        <input
+          id="alimSearchModal"
+          type="text"
+          placeholder="Buscar alimentador..."
+          class="alim-search"
+        />
 
-          <!-- ✅ CONFIRMAR AGORA NO TOPO -->
-          <button id="btnConfirmarAlimModal" class="btn btn-primary btn-sm" title="Confirmar seleção">
-            <i class="fas fa-check"></i> CONFIRMAR
-          </button>
-        </div>
+        <button id="btnConfirmarAlimModal" class="btn btn-dark btn-sm alim-confirm">
+          <i class="fas fa-check"></i> CONFIRMAR
+        </button>
 
-        <div style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <input
-            id="alimSearchModal"
-            type="text"
-            placeholder="Buscar alimentador..."
-            style="height:32px; min-width:220px; padding:0 .6rem; border-radius:10px; border:1px solid #ddd;"
-          >
-
-          <div id="alimHintModal" style="font-size:0.9rem; color: var(--medium-gray); font-weight:800;">
-            Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.
-          </div>
+        <div id="alimHintModal" class="alim-hint">
+          Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.
         </div>
       </div>
 
-      <!-- ✅ CONTEÚDO ROLÁVEL -->
-      <div class="alim-content">
-        <div id="alimListModal" style="display:flex; flex-direction:column; gap:8px;"></div>
-      </div>
+      <!-- ✅ LISTA COM SCROLL -->
+      <div id="alimListModal" class="alim-list"></div>
     </div>
   </div>
 </div>
+
 
 
   <!-- Toast Notification -->
