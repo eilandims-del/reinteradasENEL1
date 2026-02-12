@@ -635,9 +635,14 @@ export function initMap() {
     { maxZoom: 18, attribution: 'Labels © Esri' }
   );
 
-  baseLayerOSM.addTo(map);
-  map.setMaxZoom(18);
-  currentBase = 'OSM';
+// começa no SATÉLITE + RUAS (padrão)
+baseLayerSat.addTo(map);
+if (overlaySatRoads) map.addLayer(overlaySatRoads);
+if (overlaySatLabels) map.addLayer(overlaySatLabels);
+
+map.setMaxZoom(18);
+currentBase = 'SAT';
+
 
   markersLayer = L.layerGroup().addTo(map);
   linesLayer = L.layerGroup().addTo(map);
