@@ -2226,3 +2226,115 @@ input:focus, select:focus{
     grid-template-columns: 1fr 1fr;
   }
 }
+/* =========================================================
+   FIX FINAL - MODAL ALIMENTADORES (PADRÃO POR CONJUNTO)
+   - Nome do conjunto (BLOCO) fixo em cima
+   - Alimentadores em grid horizontal abaixo
+   - Responsivo sem desalinhamento
+========================================================= */
+
+#modalAlimentadores .modal-body { padding: 0 !important; }
+#modalAlimentadores #alimListModal { padding: 12px !important; }
+
+#modalAlimentadores .alim-block{
+  background: #fff !important;
+  border: 1px solid rgba(0,0,0,.10) !important;
+  border-radius: 14px !important;
+  padding: 12px !important;
+  margin: 12px 0 !important;
+  box-shadow: 0 10px 22px rgba(0,0,0,.06) !important;
+}
+
+/* Header do bloco: fica “fixo” ao rolar */
+#modalAlimentadores .alim-block-header{
+  position: sticky !important;
+  top: 0 !important;              /* dentro do scroll do modal */
+  z-index: 2 !important;
+  background: #fff !important;
+  padding: 6px 0 10px 0 !important;
+  border-bottom: 1px solid rgba(0,0,0,.06) !important;
+  margin-bottom: 10px !important;
+}
+
+#modalAlimentadores .alim-block-left{
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  font-weight: 950 !important;
+  color: rgba(0,0,0,.78) !important;
+}
+
+#modalAlimentadores .alim-block-left input[type="checkbox"]{
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 auto !important;
+}
+
+/* Título do bloco */
+#modalAlimentadores .alim-block-title{
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+#modalAlimentadores .alim-diamond{
+  color: #1565c0 !important;
+}
+
+/* GRID horizontal dos alimentadores */
+#modalAlimentadores .alim-grid{
+  width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+}
+
+/* CHIP: sem space-between (isso gerava “espaços doidos”) */
+#modalAlimentadores .alim-chip{
+  width: 100% !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  padding: 9px 10px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(0,0,0,.14) !important;
+  background: #fff !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  font-weight: 900 !important;
+  font-size: .86rem !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+#modalAlimentadores .alim-chip input{
+  width: 16px !important;
+  height: 16px !important;
+  flex: 0 0 auto !important;
+}
+
+#modalAlimentadores .alim-chip span{
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+#modalAlimentadores .alim-chip:hover{
+  background: rgba(21,101,192,.05) !important;
+  border-color: rgba(21,101,192,.30) !important;
+}
+
+#modalAlimentadores .alim-chip.is-checked{
+  border: 2px solid rgba(21,101,192,.55) !important;
+  background: rgba(21,101,192,.08) !important;
+}
+
+/* Mobile */
+@media (max-width: 520px){
+  #modalAlimentadores .alim-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}

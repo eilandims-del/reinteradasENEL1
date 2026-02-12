@@ -42,16 +42,16 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
     return { open: () => console.warn('[ALIM-CAT] modal não inicializado (IDs faltando).') };
   }
 
-  let selected = new Set();   // normKey(alimentador)
+  let selected = new Set(); // normKey(alimentador)
   let lastRegional = '';
 
   function dispatchChanged(regional, mode) {
     const all = getAllAlimentadoresForRegional(regional);
     const selectedArr = Array.from(selected);
 
-    // blocos selecionados = blocos que têm 1+ alimentador selecionado
     const blocos = getBlocosForRegional(regional);
     const blocosSel = [];
+
     blocos.forEach(bloco => {
       const cidades = getCidadesByBloco(regional, bloco);
       const hasAny = cidades.some(c => {
@@ -100,6 +100,19 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
     return normKey(text).includes(normKey(term));
   }
 
+  // Junta TODOS os alimentadores de um BLOCO (conjunto), sem separar por cidade
+  function getAlimsDoBloco(regional, bloco) {
+    const cidades = getCidadesByBloco(regional, bloco) || [];
+    const out = [];
+    cidades.forEach(cidade => {
+      const alims = getAlimentadoresByCidade(regional, bloco, cidade) || [];
+      alims.forEach(a => out.push({ alim: a, cidade }));
+    });
+    // ordena pelo código do alimentador
+    out.sort((x, y) => String(x.alim).localeCompare(String(y.alim), 'pt-BR'));
+    return out;
+  }
+
   function renderList(regional) {
     listEl.innerHTML = '';
 
@@ -113,104 +126,87 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
     const term = String(searchEl?.value || '').trim();
 
     blocos.forEach(bloco => {
-      const cidades = getCidadesByBloco(regional, bloco);
-      if (!cidades.length) return;
+      const itens = getAlimsDoBloco(regional, bloco);
+      if (!itens.length) return;
 
-      // Se nada dentro do bloco bater com busca, não renderiza o bloco
-      const blocoMatches = cidades.some(cidade => {
-        const alims = getAlimentadoresByCidade(regional, bloco, cidade);
-        return alims.some(a => matchesSearch(`${bloco} ${cidade} ${a}`, term));
-      });
-      if (!blocoMatches) return;
+      // filtro por busca (considera bloco + cidade + alim)
+      const visiveis = itens.filter(({ alim, cidade }) =>
+        matchesSearch(`${bloco} ${cidade} ${alim}`, term)
+      );
+      if (!visiveis.length) return;
 
       const block = document.createElement('div');
       block.className = 'alim-block';
 
-      const blockTitle = document.createElement('div');
-      blockTitle.className = 'alim-block-title';
-      blockTitle.innerHTML = `<span class="alim-diamond">◆</span> <span>${bloco}</span>`;
-      block.appendChild(blockTitle);
+      // ===== Header do BLOCO (Conjunto) + checkbox selecionar tudo =====
+      const header = document.createElement('div');
+      header.className = 'alim-block-header';
 
-      cidades.forEach(cidade => {
-        const alims = getAlimentadoresByCidade(regional, bloco, cidade);
-        if (!alims.length) return;
+      const left = document.createElement('label');
+      left.className = 'alim-block-left';
 
-        const cidadeMatches = alims.some(a => matchesSearch(`${bloco} ${cidade} ${a}`, term));
-        if (!cidadeMatches) return;
+      const blocoToggle = document.createElement('input');
+      blocoToggle.type = 'checkbox';
 
-        const city = document.createElement('div');
-        city.className = 'alim-city';
+      const alimsDoBloco = itens.map(x => x.alim);
+      const allSelected = alimsDoBloco.length > 0 && alimsDoBloco.every(a => selected.has(normKey(a)));
+      const anySelected = alimsDoBloco.some(a => selected.has(normKey(a)));
 
-        const cityHeader = document.createElement('div');
-        cityHeader.className = 'alim-city-header';
+      blocoToggle.checked = allSelected;
+      blocoToggle.indeterminate = !allSelected && anySelected;
 
-        const left = document.createElement('label');
-        left.className = 'alim-city-left';
+      blocoToggle.onchange = () => {
+        if (blocoToggle.checked) alimsDoBloco.forEach(a => selected.add(normKey(a)));
+        else alimsDoBloco.forEach(a => selected.delete(normKey(a)));
+        renderList(regional);
+      };
 
-        const cityToggle = document.createElement('input');
-        cityToggle.type = 'checkbox';
+      const title = document.createElement('span');
+      title.className = 'alim-block-title';
+      title.innerHTML = `<span class="alim-diamond">◆</span> <span>${bloco}</span>`;
 
-        const allInCitySelected = alims.every(a => selected.has(normKey(a)));
-        const anyInCitySelected = alims.some(a => selected.has(normKey(a)));
-        cityToggle.checked = allInCitySelected;
-        cityToggle.indeterminate = !allInCitySelected && anyInCitySelected;
+      left.appendChild(blocoToggle);
+      left.appendChild(title);
 
-        cityToggle.onchange = () => {
-          if (cityToggle.checked) alims.forEach(a => selected.add(normKey(a)));
-          else alims.forEach(a => selected.delete(normKey(a)));
-          renderList(regional); // atualiza indeterminate e chips
+      header.appendChild(left);
+      block.appendChild(header);
+
+      // ===== Grid do BLOCO (horizontal) =====
+      const grid = document.createElement('div');
+      grid.className = 'alim-grid';
+
+      visiveis.forEach(({ alim }) => {
+        const key = normKey(alim);
+        const checked = selected.has(key);
+
+        const chip = document.createElement('label');
+        chip.className = 'alim-chip';
+        if (checked) chip.classList.add('is-checked');
+
+        chip.innerHTML = `
+          <input type="checkbox" ${checked ? 'checked' : ''} />
+          <span title="${alim}">${alim}</span>
+        `;
+
+        const input = chip.querySelector('input');
+        input.onchange = () => {
+          if (input.checked) selected.add(key);
+          else selected.delete(key);
+
+          chip.classList.toggle('is-checked', input.checked);
+          renderHint(regional);
+
+          // atualiza checkbox do bloco (checked/indeterminate)
+          const allSel = alimsDoBloco.every(a => selected.has(normKey(a)));
+          const anySel = alimsDoBloco.some(a => selected.has(normKey(a)));
+          blocoToggle.checked = allSel;
+          blocoToggle.indeterminate = !allSel && anySel;
         };
 
-        const cityName = document.createElement('span');
-        cityName.className = 'alim-city-name';
-        cityName.textContent = cidade;
-
-        left.appendChild(cityToggle);
-        left.appendChild(cityName);
-
-        cityHeader.appendChild(left);
-        city.appendChild(cityHeader);
-
-        const grid = document.createElement('div');
-        grid.className = 'alim-grid';
-
-        alims.forEach(a => {
-          if (!matchesSearch(`${bloco} ${cidade} ${a}`, term)) return;
-
-          const key = normKey(a);
-          const checked = selected.has(key);
-
-          const chip = document.createElement('label');
-          chip.className = 'alim-chip';
-          chip.classList.toggle('is-checked', checked);
-
-          chip.innerHTML = `
-            <input type="checkbox" ${checked ? 'checked' : ''} />
-            <span>${a}</span>
-          `;
-
-          const input = chip.querySelector('input');
-          input.onchange = () => {
-            if (input.checked) selected.add(key);
-            else selected.delete(key);
-            renderHint(regional);
-
-            // atualiza “select city”
-            const allSel = alims.every(x => selected.has(normKey(x)));
-            const anySel = alims.some(x => selected.has(normKey(x)));
-            cityToggle.checked = allSel;
-            cityToggle.indeterminate = !allSel && anySel;
-
-            chip.classList.toggle('is-checked', input.checked);
-          };
-
-          grid.appendChild(chip);
-        });
-
-        city.appendChild(grid);
-        block.appendChild(city);
+        grid.appendChild(chip);
       });
 
+      block.appendChild(grid);
       listEl.appendChild(block);
     });
 
@@ -225,7 +221,6 @@ export function setupAlimentadoresCatalogModal(opts = {}) {
       return;
     }
 
-    // troca regional => limpa seleção e busca
     if (regional !== lastRegional) {
       selected = new Set();
       lastRegional = regional;
