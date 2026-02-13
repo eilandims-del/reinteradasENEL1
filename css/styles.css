@@ -2475,3 +2475,44 @@ input:focus, select:focus{
   height: 100%;
   border: 0;
 }
+/* =========================
+   BOTÃO FECHAR – MODAL INSPEÇÃO
+========================= */
+
+#modalInspecaoClose {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+
+  width: 38px;
+  height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: none;
+  border-radius: 50%;
+
+  background: rgba(15, 23, 42, 0.06);
+  color: #0f172a; /* azul escuro elegante */
+
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#modalInspecaoClose:hover {
+  background: #0A4A8C;
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(10, 74, 140, 0.25);
+}
+
+#modalInspecaoClose:active {
+  transform: scale(0.95);
+}
+
