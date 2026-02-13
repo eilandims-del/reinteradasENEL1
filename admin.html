@@ -1,170 +1,138 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo - Sistema de Reiteradas</title>
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-enel-preview.png?v=2">
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-enel-preview.png?v=2">
-    <link rel="apple-touch-icon" sizes="180x180" href="assets/logo-enel-preview.png?v=2">
-    <link rel="shortcut icon" href="assets/logo-enel-preview.png?v=2">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel Administrativo - Sistema de Reiteradas</title>
 
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/admin.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="shortcut icon" href="assets/logo-enel-preview.png?v=2" />
+
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
+
 <body>
 <header class="header">
-    <div class="container">
-        <div class="header-content">
-            <h1 class="logo">Painel Administrativo</h1>
-            <nav class="header-nav">
-                <a href="index.html" class="nav-link">
-                    <i class="fas fa-home"></i> Página Inicial
-                </a>
-                <button id="logoutBtn" class="nav-link btn-logout" style="display: none;">
-                    <i class="fas fa-sign-out-alt"></i> Sair
-                </button>
-            </nav>
-        </div>
+  <div class="container">
+    <div class="header-content">
+      <h1 class="logo">Painel Administrativo</h1>
+      <nav class="header-nav">
+        <a href="index.html" class="nav-link">
+          <i class="fas fa-home"></i> Página Inicial
+        </a>
+        <button id="logoutBtn" class="nav-link btn-logout" style="display:none;">
+          <i class="fas fa-sign-out-alt"></i> Sair
+        </button>
+      </nav>
     </div>
+  </div>
 </header>
 
 <main class="main-content">
-    <div class="container">
+  <div class="container">
 
-        <!-- Login -->
-        <section id="loginSection" class="login-section card">
-            <h2 class="section-title">
-                <i class="fas fa-lock"></i> Acesso Administrativo
-            </h2>
-            <form id="loginForm" class="login-form">
-                <div class="form-group">
-                    <label for="email">E-mail:</label>
-                    <input type="email" id="email" class="form-input" required autocomplete="username">
-                </div>
-                <div class="form-group">
-                    <label for="senha">Senha:</label>
-                    <input type="password" id="senha" class="form-input" required autocomplete="current-password">
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">
-                    <i class="fas fa-sign-in-alt"></i> Entrar
-                </button>
-                <div id="loginError" class="error-message"></div>
-            </form>
-        </section>
+    <!-- Login -->
+    <section id="loginSection" class="login-section card">
+      <h2 class="section-title">
+        <i class="fas fa-lock"></i> Acesso Administrativo
+      </h2>
 
-        <!-- Admin -->
-        <section id="adminSection" class="admin-section" style="display: none;">
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="email">E-mail:</label>
+          <input type="email" id="email" class="form-input" required autocomplete="username" />
+        </div>
 
-            <!-- UPLOADS -->
-            <section class="upload-section card">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
-                    <h2 class="section-title" style="margin:0;">
-                        <i class="fas fa-upload"></i> Upload de Planilhas por Regional
-                    </h2>
-                    <button id="btnClearAll" class="btn btn-danger btn-sm" title="Limpar TODOS os dados do banco">
-                        <i class="fas fa-trash-alt"></i> Limpar Tudo
-                    </button>
-                </div>
+        <div class="form-group">
+          <label for="senha">Senha:</label>
+          <input type="password" id="senha" class="form-input" required autocomplete="current-password" />
+        </div>
 
-                <div class="upload-info" style="margin-top:12px;">
-                    <p><strong>Estrutura obrigatória:</strong></p>
-                    <ul>
-                        <li>INCIDENCIA</li>
-                        <li>CAUSA</li>
-                        <li>ALIMENT.</li>
-                        <li>DATA</li>
-                        <li>ELEMENTO</li>
-                        <li>CONJUNTO</li>
-                    </ul>
-                </div>
+        <button type="submit" class="btn btn-primary btn-block">
+          <i class="fas fa-sign-in-alt"></i> Entrar
+        </button>
 
-                <!-- ===== REGIONAL: ATLANTICO ===== -->
-                <div class="card" style="margin-top:14px;">
-                    <h3 style="margin:0 0 10px 0;"><i class="fas fa-map-marker-alt"></i> Regional ATLANTICO</h3>
+        <div id="loginError" class="error-message"></div>
+      </form>
+    </section>
 
-                    <input type="file" id="fileInput_atlantico" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;">
-                    <div id="dropZone_atlantico" class="drop-zone">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <p>Arraste aqui ou clique para selecionar</p>
-                        <p class="upload-hint">CSV, XLS, XLSX, XLSB</p>
-                    </div>
+    <!-- Admin -->
+    <section id="adminSection" class="admin-section" style="display:none;">
 
-                    <div id="uploadProgress_atlantico" class="upload-progress" style="display:none;">
-                        <div class="progress-bar"><div id="progressFill_atlantico" class="progress-fill"></div></div>
-                        <p id="progressText_atlantico">Processando...</p>
-                    </div>
-                    <div id="uploadResult_atlantico" class="upload-result" style="display:none;"></div>
+      <section class="upload-section card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+          <h2 class="section-title" style="margin:0;">
+            <i class="fas fa-upload"></i> Upload de Planilhas
+          </h2>
 
-                    <div style="margin-top:12px;">
-                        <h4 style="margin:0 0 8px 0;"><i class="fas fa-history"></i> Histórico (ATLANTICO)</h4>
-                        <div id="uploadHistory_atlantico" class="history-list">
-                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
-                        </div>
-                    </div>
-                </div>
+          <button id="btnClearAll" class="btn btn-danger btn-sm" title="Limpar TODOS os dados do banco">
+            <i class="fas fa-trash-alt"></i> Limpar Tudo
+          </button>
+        </div>
 
-                <!-- ===== REGIONAL: NORTE ===== -->
-                <div class="card" style="margin-top:14px;">
-                    <h3 style="margin:0 0 10px 0;"><i class="fas fa-map-marker-alt"></i> Regional NORTE</h3>
+        <div class="upload-info" style="margin-top:12px;">
+          <p><strong>Estrutura obrigatória:</strong></p>
+          <ul>
+            <li>INCIDENCIA</li>
+            <li>CAUSA</li>
+            <li>ALIMENT.</li>
+            <li>DATA</li>
+            <li>ELEMENTO</li>
+            <li>CONJUNTO</li>
+            <li><strong>ÁREA</strong> (coluna E) → ATLÂNTICO / NORTE / CENTRO NORTE</li>
+          </ul>
+        </div>
 
-                    <input type="file" id="fileInput_norte" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;">
-                    <div id="dropZone_norte" class="drop-zone">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <p>Arraste aqui ou clique para selecionar</p>
-                        <p class="upload-hint">CSV, XLS, XLSX, XLSB</p>
-                    </div>
+        <!-- Upload Geral -->
+        <div class="card" style="margin-top:14px;">
+          <h3 style="margin:0 0 10px 0;">
+            <i class="fas fa-database"></i> Upload Geral (3 Regionais)
+          </h3>
 
-                    <div id="uploadProgress_norte" class="upload-progress" style="display:none;">
-                        <div class="progress-bar"><div id="progressFill_norte" class="progress-fill"></div></div>
-                        <p id="progressText_norte">Processando...</p>
-                    </div>
-                    <div id="uploadResult_norte" class="upload-result" style="display:none;"></div>
+          <input type="file" id="fileInput_geral" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;" />
 
-                    <div style="margin-top:12px;">
-                        <h4 style="margin:0 0 8px 0;"><i class="fas fa-history"></i> Histórico (NORTE)</h4>
-                        <div id="uploadHistory_norte" class="history-list">
-                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
-                        </div>
-                    </div>
-                </div>
+          <div id="dropZone_geral" class="drop-zone">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Arraste aqui ou clique para selecionar</p>
+            <p class="upload-hint">Planilha única com coluna <b>ÁREA</b> (coluna E)</p>
+          </div>
 
-                <!-- ===== REGIONAL: CENTRO NORTE ===== -->
-                <div class="card" style="margin-top:14px;">
-                    <h3 style="margin:0 0 10px 0;"><i class="fas fa-map-marker-alt"></i> Regional CENTRO NORTE</h3>
+          <div id="uploadProgress_geral" class="upload-progress" style="display:none;">
+            <div class="progress-bar">
+              <div id="progressFill_geral" class="progress-fill"></div>
+            </div>
+            <p id="progressText_geral">Processando...</p>
+          </div>
 
-                    <input type="file" id="fileInput_centronorte" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;">
-                    <div id="dropZone_centronorte" class="drop-zone">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <p>Arraste aqui ou clique para selecionar</p>
-                        <p class="upload-hint">CSV, XLS, XLSX, XLSB</p>
-                    </div>
+          <div id="uploadResult_geral" class="upload-result" style="display:none;"></div>
 
-                    <div id="uploadProgress_centronorte" class="upload-progress" style="display:none;">
-                        <div class="progress-bar"><div id="progressFill_centronorte" class="progress-fill"></div></div>
-                        <p id="progressText_centronorte">Processando...</p>
-                    </div>
-                    <div id="uploadResult_centronorte" class="upload-result" style="display:none;"></div>
+          <div style="margin-top:12px;">
+            <h4 style="margin:0 0 8px 0;">
+              <i class="fas fa-history"></i> Histórico (Geral)
+            </h4>
 
-                    <div style="margin-top:12px;">
-                        <h4 style="margin:0 0 8px 0;"><i class="fas fa-history"></i> Histórico (CENTRO NORTE)</h4>
-                        <div id="uploadHistory_centronorte" class="history-list">
-                            <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando...</div>
-                        </div>
-                    </div>
-                </div>
+            <div id="uploadHistory_geral" class="history-list">
+              <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i> Carregando...
+              </div>
+            </div>
+          </div>
+        </div>
 
-            </section>
-        </section>
-    </div>
+      </section>
+    </section>
+
+  </div>
 </main>
 
 <div id="toast" class="toast">
-    <span id="toastMessage"></span>
+  <span id="toastMessage"></span>
 </div>
 
-<!-- Scripts -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script type="module" src="js/firebase-config.js"></script>

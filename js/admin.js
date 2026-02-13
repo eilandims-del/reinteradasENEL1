@@ -9,9 +9,7 @@ import { showToast } from './utils/helpers.js';
 let currentUser = null;
 
 const REGIONAIS = [
-  { key: 'ATLANTICO', uiKey: 'atlantico', label: 'ATLANTICO' },
-  { key: 'NORTE', uiKey: 'norte', label: 'NORTE' },
-  { key: 'CENTRO NORTE', uiKey: 'centronorte', label: 'CENTRO NORTE' }
+  { key: 'GERAL', uiKey: 'geral', label: 'GERAL' }
 ];
 
 function init() {
@@ -56,17 +54,16 @@ function initEventListeners() {
     await handleLogout();
   });
 
-  // Limpeza completa (se existir)
+  // Limpeza completa
   document.getElementById('btnClearAll')?.addEventListener('click', async () => {
     await handleClearAll();
   });
 
-  // Upload listeners por regional (3)
+  // Upload (GERAL)
   for (const r of REGIONAIS) {
     const fileInput = document.getElementById(`fileInput_${r.uiKey}`);
     const dropZone = document.getElementById(`dropZone_${r.uiKey}`);
 
-    // Se o admin.html ainda não estiver com os 3 blocos, não quebra
     if (!fileInput || !dropZone) continue;
 
     dropZone.addEventListener('click', () => fileInput.click());
@@ -128,7 +125,40 @@ async function handleLogout() {
 }
 
 /**
- * Upload por Regional
+ * Helpers: detectar coluna ÁREA e mapear para REGIONAL
+ */
+function hasAreaColumn(headers = []) {
+  return headers.some(h => String(h || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    === 'AREA'
+  );
+}
+
+function normalizeAreaToRegional(areaRaw) {
+  const v = String(areaRaw || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+
+  if (!v) return '';
+
+  // aceita variações comuns
+  if (v.includes('ATLANT')) return 'ATLANTICO';
+  if (v === 'NORTE' || v.includes(' NORTE')) return 'NORTE';
+  if (v.includes('CENTRO') && v.includes('NORTE')) return 'CENTRO NORTE';
+
+  return '';
+}
+
+/**
+ * Upload Geral (planilha única) -> lê ÁREA (coluna E) -> salva cada linha com REGIONAL correto
  */
 async function handleFileUpload(file, regionalKey, uiKey) {
   const uploadProgress = document.getElementById(`uploadProgress_${uiKey}`);
@@ -151,33 +181,54 @@ async function handleFileUpload(file, regionalKey, uiKey) {
   uploadResult.style.display = 'none';
   uploadResult.innerHTML = '';
   progressFill.style.width = '10%';
-  progressText.textContent = `Lendo arquivo (${regionalKey})...`;
+  progressText.textContent = 'Lendo arquivo...';
   progressText.style.color = '';
 
   try {
-
-    progressFill.style.width = '30%';
-    progressText.textContent = `Processando arquivo (${regionalKey})...`;
+    progressFill.style.width = '25%';
+    progressText.textContent = 'Processando arquivo...';
 
     const parsed = await parseFile(file);
 
-    // ✅ detecta coluna REGIONAL na planilha (modo misto)
-    const hasRegionalColumn = (parsed.headers || []).some(h =>
-      String(h || '').trim().toUpperCase().replace(/\./g,'') === 'REGIONAL'
-    );
+    // ✅ precisa existir coluna ÁREA (AREA após normalização)
+    const hasAREA = hasAreaColumn(parsed.headers || []);
+    if (!hasAREA) {
+      throw new Error('Coluna "ÁREA" não encontrada (esperado: coluna E).');
+    }
 
-    // ✅ AQUI você troca a mensagem “Lendo arquivo ...”
-    progressText.textContent = hasRegionalColumn
-      ? `Lendo arquivo (MISTO: 3 regionais)...`
-      : `Lendo arquivo (${regionalKey})...`;
+    progressFill.style.width = '40%';
+    progressText.textContent = 'Distribuindo por regional (via ÁREA)...';
+
+    // ✅ injeta REGIONAL por linha, a partir de AREA/ÁREA
+    const enriched = (parsed.data || []).map(row => {
+      const areaVal = row?.AREA ?? row?.['ÁREA'] ?? row?.area ?? row?.Area ?? '';
+      const reg = normalizeAreaToRegional(areaVal);
+
+      return {
+        ...row,
+        // importante: salvar nos dois campos (alguns lugares usam ambos)
+        REGIONAL: reg,
+        regional: reg,
+        AREA: areaVal
+      };
+    });
+
+    // valida se veio pelo menos 1 linha com REGIONAL mapeado
+    const okCount = enriched.filter(r => !!r.REGIONAL).length;
+    if (okCount === 0) {
+      throw new Error('Nenhuma linha foi mapeada pela coluna "ÁREA". Verifique valores: ATLÂNTICO / NORTE / CENTRO NORTE.');
+    }
 
     progressFill.style.width = '50%';
-    progressText.textContent = `Validando dados (${regionalKey})...`;
+    progressText.textContent = `Validando dados... (${okCount} linha(s) com REGIONAL)`;
+
+    const uploadId = DataService.generateUploadId();
 
     const metadata = {
       uploadId,
-      regional: hasRegionalColumn ? 'MISTO' : regionalKey,
-      REGIONAL: hasRegionalColumn ? 'MISTO' : regionalKey,      
+      // histórico fica como "MISTO", porque o arquivo contém 3 regionais
+      regional: 'MISTO',
+      REGIONAL: 'MISTO',
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type || 'unknown',
@@ -186,44 +237,46 @@ async function handleFileUpload(file, regionalKey, uiKey) {
       uploadedAt: new Date().toISOString()
     };
 
+    progressFill.style.width = '70%';
+    progressText.textContent = 'Salvando no banco (3 regionais)...';
+
     const updateProgress = (progressInfo) => {
       const progress = progressInfo.progress ?? 0;
       progressFill.style.width = `${70 + (progress * 0.3)}%`;
 
       if (progressInfo.retrying) {
-        progressText.textContent = `(${regionalKey}) Retry (${progressInfo.retryCount})... ${progressInfo.nextRetryIn}s`;
+        progressText.textContent = `Retry (${progressInfo.retryCount})... ${progressInfo.nextRetryIn}s`;
         progressText.style.color = 'var(--warning)';
       } else {
         progressText.textContent =
-          `(${regionalKey}) Batch ${progressInfo.batch}/${progressInfo.totalBatches}... ` +
+          `Batch ${progressInfo.batch}/${progressInfo.totalBatches}... ` +
           `(${progressInfo.saved}/${progressInfo.total} - ${progress}%)`;
         progressText.style.color = '';
       }
     };
 
-    const saveResult = await DataService.saveData(parsed.data, metadata, updateProgress);
+    const saveResult = await DataService.saveData(enriched, metadata, updateProgress);
 
     if (saveResult.success) {
       progressFill.style.width = '100%';
-      progressText.textContent = `Concluído! (${regionalKey})`;
+      progressText.textContent = 'Concluído! (3 regionais)';
 
       uploadResult.className = 'upload-result success';
       uploadResult.innerHTML = `
         <strong>✓ Upload realizado com sucesso!</strong><br>
-        Regional: ${regionalKey}<br>
+        Modo: Geral (3 Regionais via ÁREA)<br>
         Arquivo: ${file.name}<br>
         Registros processados: ${saveResult.count}<br>
         Colunas: ${parsed.headers.length}
       `;
       uploadResult.style.display = 'block';
 
-      showToast(`Upload concluído (${regionalKey}): ${saveResult.count} registro(s).`, 'success');
+      showToast(`Upload concluído (GERAL): ${saveResult.count} registro(s).`, 'success');
 
       // limpar input
       const input = document.getElementById(`fileInput_${uiKey}`);
       if (input) input.value = '';
 
-      // recarregar histórico dessa regional
       setTimeout(() => {
         loadUploadHistory(regionalKey, uiKey);
         uploadProgress.style.display = 'none';
@@ -240,66 +293,12 @@ async function handleFileUpload(file, regionalKey, uiKey) {
     uploadResult.style.display = 'block';
     uploadProgress.style.display = 'none';
 
-    showToast(`Erro (${regionalKey}): ${error.message}`, 'error');
+    showToast(`Erro (GERAL): ${error.message}`, 'error');
   }
 }
 
 /**
- * Excluir upload (recarrega apenas a regional correta)
- */
-async function handleDeleteUpload(uploadId, fileName, regionalKey, uiKey) {
-  const confirmMessage =
-    `Tem certeza que deseja excluir a planilha "${fileName}"?\n\n` +
-    `Regional: ${regionalKey}\n\n` +
-    `⚠️ Esta ação não pode ser desfeita.\n\nDeseja continuar?`;
-
-  if (!confirm(confirmMessage)) return;
-
-  const historyContainer = document.getElementById(`uploadHistory_${uiKey}`);
-  if (!historyContainer) {
-    showToast(`Container de histórico (${regionalKey}) não encontrado.`, 'error');
-    return;
-  }
-
-  const originalContent = historyContainer.innerHTML;
-
-  historyContainer.innerHTML = `
-    <div class="loading-spinner">
-      <i class="fas fa-spinner fa-spin"></i>
-      <p>Excluindo "${fileName}" (${regionalKey})...</p>
-    </div>
-  `;
-
-  try {
-    const result = await DataService.deleteUpload(uploadId);
-
-    if (result.success) {
-      const msg = result.deletedCount > 0
-        ? `✅ Excluída! ${result.deletedCount} registro(s) removido(s).`
-        : `✅ Referência removida. (Nenhum registro encontrado)`;
-
-      showToast(`${msg} (${regionalKey})`, 'success');
-      setTimeout(() => loadUploadHistory(regionalKey, uiKey), 1000);
-    } else {
-      showToast(`Erro ao excluir (${regionalKey}): ${result.error || 'Erro desconhecido'}`, 'error');
-      setTimeout(() => {
-        historyContainer.innerHTML = originalContent;
-        loadUploadHistory(regionalKey, uiKey);
-      }, 1200);
-    }
-  } catch (error) {
-    console.error('[ADMIN] Erro inesperado ao excluir:', error);
-    showToast(`Erro inesperado (${regionalKey}): ${error.message}`, 'error');
-
-    setTimeout(() => {
-      historyContainer.innerHTML = originalContent;
-      loadUploadHistory(regionalKey, uiKey);
-    }, 1200);
-  }
-}
-
-/**
- * Carregar histórico por regional
+ * Histórico
  */
 async function loadUploadHistory(regionalKey, uiKey) {
   const historyContainer = document.getElementById(`uploadHistory_${uiKey}`);
@@ -308,6 +307,7 @@ async function loadUploadHistory(regionalKey, uiKey) {
   historyContainer.innerHTML =
     '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando histórico...</div>';
 
+  // ✅ Como "GERAL" não é uma regional real, normalizeRegional() retorna vazio e o service traz "tudo"
   const result = await DataService.getUploadHistory(regionalKey);
 
   if (result.success && result.history.length > 0) {
@@ -328,7 +328,7 @@ async function loadUploadHistory(regionalKey, uiKey) {
       historyItem.innerHTML = `
         <div class="history-info">
           <h3>${fileName}</h3>
-          <p>Regional: ${regionalKey}</p>
+          <p>Modo: Geral (ÁREA → 3 regionais)</p>
           <p>Upload em: ${date}</p>
           <p>Por: ${item.uploadedBy || 'Desconhecido'}</p>
         </div>
@@ -362,12 +362,65 @@ function loadAllHistories() {
 }
 
 /**
- * Limpeza completa (usa DataService.clearAllData)
+ * Excluir upload
+ */
+async function handleDeleteUpload(uploadId, fileName, regionalKey, uiKey) {
+  const confirmMessage =
+    `Tem certeza que deseja excluir a planilha "${fileName}"?\n\n` +
+    `⚠️ Esta ação não pode ser desfeita.\n\nDeseja continuar?`;
+
+  if (!confirm(confirmMessage)) return;
+
+  const historyContainer = document.getElementById(`uploadHistory_${uiKey}`);
+  if (!historyContainer) {
+    showToast(`Container de histórico não encontrado.`, 'error');
+    return;
+  }
+
+  const originalContent = historyContainer.innerHTML;
+
+  historyContainer.innerHTML = `
+    <div class="loading-spinner">
+      <i class="fas fa-spinner fa-spin"></i>
+      <p>Excluindo "${fileName}"...</p>
+    </div>
+  `;
+
+  try {
+    const result = await DataService.deleteUpload(uploadId);
+
+    if (result.success) {
+      const msg = result.deletedCount > 0
+        ? `✅ Excluída! ${result.deletedCount} registro(s) removido(s).`
+        : `✅ Referência removida. (Nenhum registro encontrado)`;
+
+      showToast(msg, 'success');
+      setTimeout(() => loadUploadHistory(regionalKey, uiKey), 1000);
+    } else {
+      showToast(`Erro ao excluir: ${result.error || 'Erro desconhecido'}`, 'error');
+      setTimeout(() => {
+        historyContainer.innerHTML = originalContent;
+        loadUploadHistory(regionalKey, uiKey);
+      }, 1200);
+    }
+  } catch (error) {
+    console.error('[ADMIN] Erro inesperado ao excluir:', error);
+    showToast(`Erro inesperado: ${error.message}`, 'error');
+
+    setTimeout(() => {
+      historyContainer.innerHTML = originalContent;
+      loadUploadHistory(regionalKey, uiKey);
+    }, 1200);
+  }
+}
+
+/**
+ * Limpeza completa
  */
 async function handleClearAll() {
   const firstConfirm = confirm(
     '⚠️ ATENÇÃO: LIMPEZA COMPLETA DO BANCO DE DADOS\n\n' +
-    'Esta ação irá deletar TODOS os dados (todas as regionais).\n\n' +
+    'Esta ação irá deletar TODOS os dados.\n\n' +
     'Tem CERTEZA ABSOLUTA que deseja continuar?'
   );
   if (!firstConfirm) return;

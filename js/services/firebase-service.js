@@ -91,6 +91,9 @@ export class DataService {
 /* =========================
    SAVE DATA (com REGIONAL por LINHA ou por METADATA)
 ========================= */
+/* =========================
+   SAVE DATA (com REGIONAL por LINHA ou por ÁREA)
+========================= */
 static async saveData(data, metadata = {}, progressCallback = null) {
   try {
     const uploadId = metadata.uploadId;
@@ -101,17 +104,22 @@ static async saveData(data, metadata = {}, progressCallback = null) {
     if (!uploadId) throw new Error("uploadId é obrigatório");
     if (!Array.isArray(data)) throw new Error("data precisa ser um array");
 
-    // --- helper: acha REGIONAL na linha (robusto p/ variações)
+    // --- helper: acha REGIONAL (ou ÁREA) na linha
     const pickRegionalFromRow = (row) => {
       if (!row || typeof row !== "object") return "";
 
-      // 1) chaves diretas comuns
+      // 1) tenta REGIONAL direto
       const direct =
         row.REGIONAL ?? row.regional ?? row.Regional ?? row["REGIONAL "] ?? row["Regional "] ?? row["regional "];
       const r1 = this.normalizeRegional(direct);
       if (r1) return r1;
 
-      // 2) varre as chaves e procura algo que normalize para “REGIONAL”
+      // 2) tenta pela coluna ÁREA (normalizada vira AREA no seu parser)
+      const area = row.AREA ?? row["ÁREA"] ?? row.area ?? row.Area ?? "";
+      const rArea = this.normalizeRegional(area);
+      if (rArea) return rArea;
+
+      // 3) varre as chaves e procura algo que normalize para “REGIONAL”
       const keys = Object.keys(row);
       const kFound = keys.find((k) => String(k).trim().toUpperCase().replace(/\./g, "") === "REGIONAL");
       if (kFound != null) {
@@ -123,11 +131,10 @@ static async saveData(data, metadata = {}, progressCallback = null) {
     };
 
     // validação: precisa existir regional em pelo menos um lugar
-    // (ou no fallback, ou em alguma linha)
     if (!fallbackRegional) {
       const hasAnyRowRegional = (data || []).some((row) => !!pickRegionalFromRow(row));
       if (!hasAnyRowRegional) {
-        throw new Error('REGIONAL é obrigatória: informe pelo "box" ou inclua a coluna REGIONAL na planilha.');
+        throw new Error('REGIONAL é obrigatória: inclua a coluna "ÁREA" (ou "REGIONAL") na planilha.');
       }
     }
 
@@ -160,7 +167,7 @@ static async saveData(data, metadata = {}, progressCallback = null) {
             // ✅ regional por linha (se existir) senão cai no fallback do box
             const rowRegional = pickRegionalFromRow(item) || fallbackRegional;
 
-            // se ainda assim não tiver, ignora/evita salvar lixo
+            // se ainda assim não tiver, ignora a linha
             if (!rowRegional) return;
 
             batch.set(
@@ -226,7 +233,6 @@ static async saveData(data, metadata = {}, progressCallback = null) {
       doc(db, this.UPLOADS_COLLECTION, uploadId),
       {
         ...metadata,
-        // se for misto, guarda como “MISTO”; senão, guarda a regional padrão
         REGIONAL: fallbackRegional || "MISTO",
         regional: fallbackRegional || "MISTO",
         totalRecords: data.length,
@@ -242,6 +248,7 @@ static async saveData(data, metadata = {}, progressCallback = null) {
     return { success: false, error: error?.message || String(error) };
   }
 }
+
 
   /* =========================
      GET DATA (REGIONAL + DATA)
