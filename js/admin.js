@@ -155,23 +155,29 @@ async function handleFileUpload(file, regionalKey, uiKey) {
   progressText.style.color = '';
 
   try {
+
     progressFill.style.width = '30%';
     progressText.textContent = `Processando arquivo (${regionalKey})...`;
 
     const parsed = await parseFile(file);
 
+    // ✅ detecta coluna REGIONAL na planilha (modo misto)
+    const hasRegionalColumn = (parsed.headers || []).some(h =>
+      String(h || '').trim().toUpperCase().replace(/\./g,'') === 'REGIONAL'
+    );
+
+    // ✅ AQUI você troca a mensagem “Lendo arquivo ...”
+    progressText.textContent = hasRegionalColumn
+      ? `Lendo arquivo (MISTO: 3 regionais)...`
+      : `Lendo arquivo (${regionalKey})...`;
+
     progressFill.style.width = '50%';
     progressText.textContent = `Validando dados (${regionalKey})...`;
 
-    const uploadId = DataService.generateUploadId();
-
-    progressFill.style.width = '70%';
-    progressText.textContent = `Salvando no banco (${regionalKey})...`;
-
     const metadata = {
       uploadId,
-      regional: regionalKey,
-      REGIONAL: regionalKey,
+      regional: hasRegionalColumn ? 'MISTO' : regionalKey,
+      REGIONAL: hasRegionalColumn ? 'MISTO' : regionalKey,      
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type || 'unknown',

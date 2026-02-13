@@ -88,120 +88,160 @@ export class DataService {
   /* =========================
      SAVE DATA (com REGIONAL)
   ========================= */
-  static async saveData(data, metadata = {}, progressCallback = null) {
-    try {
-      const uploadId = metadata.uploadId;
-      const regional = this.normalizeRegional(metadata.regional || metadata.REGIONAL);
+/* =========================
+   SAVE DATA (com REGIONAL por LINHA ou por METADATA)
+========================= */
+static async saveData(data, metadata = {}, progressCallback = null) {
+  try {
+    const uploadId = metadata.uploadId;
 
-      if (!uploadId) throw new Error("uploadId é obrigatório");
-      if (!regional) throw new Error("REGIONAL é obrigatória");
-      if (!Array.isArray(data)) throw new Error("data precisa ser um array");
+    // regional padrão (vinda do box) — pode ser vazia no modo “misto”
+    const fallbackRegional = this.normalizeRegional(metadata.regional || metadata.REGIONAL);
 
-      const BATCH_SIZE = 200;
-      const THROTTLE_MS = 900;
+    if (!uploadId) throw new Error("uploadId é obrigatório");
+    if (!Array.isArray(data)) throw new Error("data precisa ser um array");
 
-      const MAX_RETRIES = 8;
-      const INITIAL_BACKOFF_MS = 2000;
+    // --- helper: acha REGIONAL na linha (robusto p/ variações)
+    const pickRegionalFromRow = (row) => {
+      if (!row || typeof row !== "object") return "";
 
-      let totalSaved = 0;
-      const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+      // 1) chaves diretas comuns
+      const direct =
+        row.REGIONAL ?? row.regional ?? row.Regional ?? row["REGIONAL "] ?? row["Regional "] ?? row["regional "];
+      const r1 = this.normalizeRegional(direct);
+      if (r1) return r1;
 
-      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-        const startIndex = batchIndex * BATCH_SIZE;
-        const endIndex = Math.min(startIndex + BATCH_SIZE, data.length);
-        const batchData = data.slice(startIndex, endIndex);
+      // 2) varre as chaves e procura algo que normalize para “REGIONAL”
+      const keys = Object.keys(row);
+      const kFound = keys.find((k) => String(k).trim().toUpperCase().replace(/\./g, "") === "REGIONAL");
+      if (kFound != null) {
+        const r2 = this.normalizeRegional(row[kFound]);
+        if (r2) return r2;
+      }
 
-        let retryCount = 0;
-        let batchSuccess = false;
+      return "";
+    };
 
-        while (!batchSuccess && retryCount < MAX_RETRIES) {
-          try {
-            const batch = writeBatch(db);
+    // validação: precisa existir regional em pelo menos um lugar
+    // (ou no fallback, ou em alguma linha)
+    if (!fallbackRegional) {
+      const hasAnyRowRegional = (data || []).some((row) => !!pickRegionalFromRow(row));
+      if (!hasAnyRowRegional) {
+        throw new Error('REGIONAL é obrigatória: informe pelo "box" ou inclua a coluna REGIONAL na planilha.');
+      }
+    }
 
-            batchData.forEach((item, index) => {
-              const rowIndex = startIndex + index;
-              const docId = `${uploadId}_${rowIndex}`;
+    const BATCH_SIZE = 200;
+    const THROTTLE_MS = 900;
 
-              const ref = doc(db, this.COLLECTION_NAME, docId);
+    const MAX_RETRIES = 8;
+    const INITIAL_BACKOFF_MS = 2000;
 
-              batch.set(
-                ref,
-                {
-                  ...item,
-                  REGIONAL: regional,
-                  regional,
-                  uploadId,
-                  rowIndex,
-                  createdAt: serverTimestamp()
-                },
-                { merge: true }
-              );
+    let totalSaved = 0;
+    const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const startIndex = batchIndex * BATCH_SIZE;
+      const endIndex = Math.min(startIndex + BATCH_SIZE, data.length);
+      const batchData = data.slice(startIndex, endIndex);
+
+      let retryCount = 0;
+      let batchSuccess = false;
+
+      while (!batchSuccess && retryCount < MAX_RETRIES) {
+        try {
+          const batch = writeBatch(db);
+
+          batchData.forEach((item, index) => {
+            const rowIndex = startIndex + index;
+            const docId = `${uploadId}_${rowIndex}`;
+            const ref = doc(db, this.COLLECTION_NAME, docId);
+
+            // ✅ regional por linha (se existir) senão cai no fallback do box
+            const rowRegional = pickRegionalFromRow(item) || fallbackRegional;
+
+            // se ainda assim não tiver, ignora/evita salvar lixo
+            if (!rowRegional) return;
+
+            batch.set(
+              ref,
+              {
+                ...item,
+                REGIONAL: rowRegional,
+                regional: rowRegional,
+                uploadId,
+                rowIndex,
+                createdAt: serverTimestamp()
+              },
+              { merge: true }
+            );
+          });
+
+          await batch.commit();
+
+          totalSaved += batchData.length;
+          batchSuccess = true;
+
+          if (progressCallback) {
+            progressCallback({
+              batch: batchIndex + 1,
+              totalBatches,
+              saved: totalSaved,
+              total: data.length,
+              progress: Math.round((totalSaved / data.length) * 100),
+              retrying: false,
+              retryCount: 0,
+              nextRetryIn: 0
             });
-
-            await batch.commit();
-
-            totalSaved += batchData.length;
-            batchSuccess = true;
-
-            if (progressCallback) {
-              progressCallback({
-                batch: batchIndex + 1,
-                totalBatches,
-                saved: totalSaved,
-                total: data.length,
-                progress: Math.round((totalSaved / data.length) * 100),
-                retrying: false,
-                retryCount: 0,
-                nextRetryIn: 0
-              });
-            }
-          } catch (error) {
-            retryCount++;
-            const delay = Math.min(INITIAL_BACKOFF_MS * Math.pow(2, retryCount), 60000);
-
-            if (progressCallback) {
-              progressCallback({
-                batch: batchIndex + 1,
-                totalBatches,
-                saved: totalSaved,
-                total: data.length,
-                progress: Math.round((totalSaved / data.length) * 100),
-                retrying: true,
-                retryCount,
-                nextRetryIn: Math.round(delay / 1000)
-              });
-            }
-
-            await this.sleep(delay);
-            if (retryCount >= MAX_RETRIES) throw error;
           }
-        }
+        } catch (error) {
+          retryCount++;
+          const delay = Math.min(INITIAL_BACKOFF_MS * Math.pow(2, retryCount), 60000);
 
-        if (batchIndex < totalBatches - 1) {
-          await this.sleep(THROTTLE_MS);
+          if (progressCallback) {
+            progressCallback({
+              batch: batchIndex + 1,
+              totalBatches,
+              saved: totalSaved,
+              total: data.length,
+              progress: Math.round((totalSaved / data.length) * 100),
+              retrying: true,
+              retryCount,
+              nextRetryIn: Math.round(delay / 1000)
+            });
+          }
+
+          await this.sleep(delay);
+          if (retryCount >= MAX_RETRIES) throw error;
         }
       }
 
-      // grava histórico do upload
-      await setDoc(
-        doc(db, this.UPLOADS_COLLECTION, uploadId),
-        {
-          ...metadata,
-          REGIONAL: regional,
-          regional,
-          totalRecords: data.length,
-          uploadedAt: serverTimestamp(),
-          uploadedBy: auth.currentUser?.email || "unknown"
-        },
-        { merge: true }
-      );
-
-      return { success: true, count: totalSaved };
-    } catch (error) {
-      console.error("[UPLOAD]", error);
-      return { success: false, error: error?.message || String(error) };
+      if (batchIndex < totalBatches - 1) {
+        await this.sleep(THROTTLE_MS);
+      }
     }
+
+    // histórico do upload
+    await setDoc(
+      doc(db, this.UPLOADS_COLLECTION, uploadId),
+      {
+        ...metadata,
+        // se for misto, guarda como “MISTO”; senão, guarda a regional padrão
+        REGIONAL: fallbackRegional || "MISTO",
+        regional: fallbackRegional || "MISTO",
+        totalRecords: data.length,
+        uploadedAt: serverTimestamp(),
+        uploadedBy: auth.currentUser?.email || "unknown"
+      },
+      { merge: true }
+    );
+
+    return { success: true, count: totalSaved };
+  } catch (error) {
+    console.error("[UPLOAD]", error);
+    return { success: false, error: error?.message || String(error) };
   }
+}
 
   /* =========================
      GET DATA (REGIONAL + DATA)
