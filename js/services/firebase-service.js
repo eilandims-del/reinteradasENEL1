@@ -68,31 +68,34 @@ export class DataService {
     CENTRO_NORTE: "CENTRO NORTE"
   };
 
-static normalizeRegional(regional) {
-  const r = String(regional || "")
+static normalizeRegional(value) {
+  const raw = String(value ?? '')
     .trim()
     .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove acento
-    .replace(/\./g, "")             // remove pontos
-    .replace(/\s+/g, " ");          // normaliza espaços
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // sem acento
 
-  // CENTRO NORTE (C.NORTE)
-  if (
-    r === "CENTRO NORTE" ||
-    r === "CENTRONORTE" ||
-    r === "CNORTE" ||
-    r === "C NORTE"
-  ) return "CENTRO NORTE";
+  // Mantém só letras/pontos/espaços pra tratar C.NORTE sem “colar” com NORTE
+  // (você pode ajustar, mas não use contains/endsWith)
+  const cleaned = raw
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  // ATLANTICO
-  if (r === "ATLANTICO") return "ATLANTICO";
+  // ✅ CENTRO NORTE (aceita exatamente "C.NORTE" ou "CENTRO NORTE")
+  // Também aceito "C NORTE" e "CNORTE" se alguém vier sem ponto
+  const cnSet = new Set(['C.NORTE', 'CENTRO NORTE', 'C NORTE', 'CNORTE']);
+  if (cnSet.has(cleaned.replace(/\./g, ''))) return 'CENTRO NORTE'; // CNORTE, C NORTE
+  if (cnSet.has(cleaned)) return 'CENTRO NORTE';                    // C.NORTE, CENTRO NORTE
 
-  // NORTE
-  if (r === "NORTE") return "NORTE";
+  // ✅ NORTE (APENAS se for exatamente NORTE)
+  if (cleaned === 'NORTE') return 'NORTE';
 
-  return "";
+  // ✅ ATLANTICO (APENAS se for exatamente ATLANTICO/ATLÂNTICO)
+  if (cleaned === 'ATLANTICO') return 'ATLANTICO';
+
+  return '';
 }
+
 
   
   static sleep(ms) {
@@ -118,46 +121,42 @@ static async saveData(data, metadata = {}, progressCallback = null) {
 
     // --- helper: acha REGIONAL (ou ÁREA) na linha
 const pickRegionalFromRow = (row) => {
-  if (!row || typeof row !== "object") return "";
+  if (!row || typeof row !== 'object') return '';
 
-  // tenta por chaves comuns
-  const candidates = [
-    row.REGIONAL, row.regional, row.Regional,
-    row.AREA, row["ÁREA"], row.area, row["AREA"]
-  ];
+  // tenta direto
+  const direct =
+    row['ÁREA'] ?? row['AREA'] ?? row.AREA ?? row.area ??
+    row['REGIONAL'] ?? row.REGIONAL ?? row.regional;
 
-  for (const c of candidates) {
-    const rr = this.normalizeRegional(c);
-    if (rr) return rr;
-  }
+  const r1 = this.normalizeRegional(direct);
+  if (r1) return r1;
 
-  // varre chaves por normalização (pega REGIONAL ou AREA/ÁREA)
+  // varre chaves procurando "AREA" ou "REGIONAL" (normalizando o nome da coluna)
   const keys = Object.keys(row);
 
-  const findKey = (target) =>
-    keys.find((k) =>
-      String(k)
-        .trim()
-        .toUpperCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\./g, "") === target
-    );
+  const normKey = (k) => String(k ?? '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, '');
 
-  const kRegional = findKey("REGIONAL");
-  if (kRegional != null) {
-    const rr = this.normalizeRegional(row[kRegional]);
-    if (rr) return rr;
-  }
-
-  const kArea = findKey("AREA"); // pega AREA e ÁREA
+  const kArea = keys.find(k => normKey(k) === 'AREA');
   if (kArea != null) {
-    const rr = this.normalizeRegional(row[kArea]);
-    if (rr) return rr;
+    const r2 = this.normalizeRegional(row[kArea]);
+    if (r2) return r2;
   }
 
-  return "";
+  const kReg = keys.find(k => normKey(k) === 'REGIONAL');
+  if (kReg != null) {
+    const r3 = this.normalizeRegional(row[kReg]);
+    if (r3) return r3;
+  }
+
+  return '';
 };
+
 
 
     // validação: precisa existir regional em pelo menos um lugar
