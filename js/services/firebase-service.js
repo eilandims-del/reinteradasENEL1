@@ -194,23 +194,19 @@ const pickRegionalFromRow = (row) => {
             const ref = doc(db, this.COLLECTION_NAME, docId);
 
             // ✅ regional por linha (se existir) senão cai no fallback do box
-            const rowRegional = pickRegionalFromRow(item) || fallbackRegional;
+        const rowRegional = pickRegionalFromRow(item);
 
-            // se ainda assim não tiver, ignora a linha
-            if (!rowRegional) return;
+        // se não achou regional na linha, NÃO salva (evita contaminar)
+        if (!rowRegional) return;
 
-            batch.set(
-              ref,
-              {
-                ...item,
-                REGIONAL: rowRegional,
-                regional: rowRegional,
-                uploadId,
-                rowIndex,
-                createdAt: serverTimestamp()
-              },
-              { merge: true }
-            );
+        batch.set(ref, {
+          ...item,
+          REGIONAL: rowRegional,
+          regional: rowRegional,
+          uploadId,
+          rowIndex,
+          createdAt: serverTimestamp()
+        }, { merge: true });
           });
 
           await batch.commit();
