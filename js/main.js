@@ -66,7 +66,9 @@ function getCatalogForRegional(regional) {
 }
 
 function getCatalogForSelectedRegional() {
-  return getCatalogForRegional(selectedRegional);
+  if (!selectedRegional) return [];
+  if (selectedRegional === 'TODOS') return []; // ✅ não existe catálogo unificado
+  return getAllAlimentadoresForRegional(selectedRegional);
 }
 
 function isAllAlimentadoresSelected() {
@@ -112,32 +114,19 @@ function updateAlimentadoresBadge() {
     el.innerHTML = `<i class="fas fa-diagram-project"></i> ${txt}`;
   };
 
-  if (!selectedRegional) {
-    setBadge('Alimentadores: —');
-    return;
-  }
+  if (!selectedRegional) { setBadge('Alimentadores: —'); return; }
 
-  // ✅ TODOS primeiro (não depende de catálogo)
-  if (String(selectedRegional).toUpperCase() === 'TODOS') {
+  // ✅ TODOS: não força catálogo
+  if (selectedRegional === 'TODOS') {
     setBadge('Alimentadores: TODOS (todas regionais)');
     return;
   }
 
   const catalog = getCatalogForSelectedRegional();
-  if (!catalog.length) {
-    setBadge('Alimentadores: —');
-    return;
-  }
+  if (!catalog.length) { setBadge('Alimentadores: —'); return; }
 
-  if (isAllAlimentadoresSelected()) {
-    setBadge('Alimentadores: TODOS');
-    return;
-  }
-
-  if (selectedAlimentadores.size > 0) {
-    setBadge(`Alimentadores: ${selectedAlimentadores.size}`);
-    return;
-  }
+  if (isAllAlimentadoresSelected()) { setBadge('Alimentadores: TODOS'); return; }
+  if (selectedAlimentadores.size > 0) { setBadge(`Alimentadores: ${selectedAlimentadores.size}`); return; }
 
   setBadge('Alimentadores: (selecionar)');
 }
@@ -540,8 +529,8 @@ async function init() {
 
   // Badge abre modal (exceto TODOS)
   document.getElementById('badgeOpenAlimentadores')?.addEventListener('click', () => {
-    if (String(selectedRegional || '').toUpperCase() === 'TODOS') {
-      showToast('Em "TODOS" não há seleção de alimentadores. Apenas escolha o período e aplique.', 'info');
+    if (selectedRegional === 'TODOS') {
+      showToast('No modo TODOS não há seleção de alimentadores. Use apenas o período.', 'info');
       return;
     }
     alimModal.open();
