@@ -498,6 +498,7 @@ function ensureMapUI() {
     'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
   const styleActive = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
   const styleInactive = 'background:#fff;color:#111;border-color:#ddd;';
+  const styleDisabled = 'opacity:0.45; cursor:not-allowed;';
 
   wrap.appendChild(box);
   container.appendChild(wrap);
@@ -511,8 +512,12 @@ function ensureMapUI() {
   const btnBaseSAT = box.querySelector('#btnBaseSAT');
 
   const paintButtons = () => {
+    // ✅ TODOS não tem ALIMENTADOR (ALIM_FILES['TODOS'] = null)
+    const alimDisabled = (String(currentRegion || '').toUpperCase() === 'TODOS');
+    btnAlim.disabled = alimDisabled;
+
     btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
-    btnAlim.style.cssText = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive);
+    btnAlim.style.cssText  = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive) + (alimDisabled ? styleDisabled : '');
   };
 
   const paintBaseButtons = () => {
@@ -556,6 +561,12 @@ function ensureMapUI() {
   });
 
   btnAlim.addEventListener('click', async () => {
+    // ✅ bloqueia ALIMENTADOR em TODOS
+    if (String(currentRegion || '').toUpperCase() === 'TODOS') {
+      mode = 'CONJUNTO';
+      paintButtons();
+      return;
+    }
     if (mode === 'ALIMENTADOR') return;
     mode = 'ALIMENTADOR';
     paintButtons();
@@ -635,14 +646,13 @@ export function initMap() {
     { maxZoom: 18, attribution: 'Labels © Esri' }
   );
 
-// começa no SATÉLITE + RUAS (padrão)
-baseLayerSat.addTo(map);
-if (overlaySatRoads) map.addLayer(overlaySatRoads);
-if (overlaySatLabels) map.addLayer(overlaySatLabels);
+  // começa no SATÉLITE + RUAS (padrão)
+  baseLayerSat.addTo(map);
+  if (overlaySatRoads) map.addLayer(overlaySatRoads);
+  if (overlaySatLabels) map.addLayer(overlaySatLabels);
 
-map.setMaxZoom(18);
-currentBase = 'SAT';
-
+  map.setMaxZoom(18);
+  currentBase = 'SAT';
 
   markersLayer = L.layerGroup().addTo(map);
   linesLayer = L.layerGroup().addTo(map);
@@ -655,6 +665,31 @@ currentBase = 'SAT';
 export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
   if (map) updateMapRegionalLabel();
+
+  // ✅ MICRO-AJUSTE:
+  // "TODOS" não possui ALIM_FILES, então força o modo CONJUNTO (e repinta botões)
+  if (String(currentRegion || '').toUpperCase() === 'TODOS' && mode === 'ALIMENTADOR') {
+    mode = 'CONJUNTO';
+
+    // repinta botões imediatamente (se UI já montou)
+    try {
+      if (btnConjRef && btnAlimRef) {
+        const base = 'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
+        const active = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
+        const inactive = 'background:#fff;color:#111;border-color:#ddd;';
+        btnConjRef.style.cssText = base + active;
+        btnAlimRef.style.cssText = base + inactive + 'opacity:0.45; cursor:not-allowed;';
+        btnAlimRef.disabled = true;
+      }
+    } catch (_) {}
+
+    // redesenha sem travar a call stack
+    if (lastData && lastData.length) {
+      setTimeout(() => {
+        try { updateHeatmap(lastData); } catch (_) {}
+      }, 0);
+    }
+  }
 }
 
 export function resetMap() {
@@ -802,6 +837,12 @@ export async function updateHeatmap(data) {
     }
 
     return;
+  }
+
+  // ✅ proteção extra: se alguém tentar ALIMENTADOR em TODOS, força CONJUNTO
+  if (String(currentRegion || '').toUpperCase() === 'TODOS') {
+    mode = 'CONJUNTO';
+    return updateHeatmap(lastData);
   }
 
   await loadAlimentadoresForRegionOnce(currentRegion);

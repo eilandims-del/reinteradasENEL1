@@ -5,7 +5,7 @@
  * Script Principal - Dashboard
  *
  * Fluxo:
- * 1) Seleciona Regional  -> abre Modal de Alimentadores (obrigatório escolher)
+ * 1) Seleciona Regional  -> abre Modal de Alimentadores (obrigatório escolher) [exceto TODOS]
  * 2) Seleciona Alimentadores (ou "TODOS") por Conjunto
  * 3) Seleciona período (data inicial/final) e clica em Aplicar
  */
@@ -44,19 +44,35 @@ let currentData = [];
 let selectedAdditionalColumns = [];
 
 // ✅ Regional selecionada
-let selectedRegional = ''; // 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
+let selectedRegional = ''; // 'TODOS' | 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
 
 // ✅ Alimentadores selecionados (Set de normKey)
 let selectedAlimentadores = new Set();
 
 // ===== Helpers =====
 
+function getCatalogForRegional(regional) {
+  const r = String(regional || '').trim().toUpperCase();
+  if (!r) return [];
+
+  // ✅ TODOS = catálogo mesclado das 3 regionais
+  if (r === 'TODOS') {
+    const regs = ['ATLANTICO', 'NORTE', 'CENTRO NORTE'];
+    const all = regs.flatMap(rr => getAllAlimentadoresForRegional(rr) || []);
+    return Array.from(new Set(all));
+  }
+
+  return getAllAlimentadoresForRegional(r) || [];
+}
+
 function getCatalogForSelectedRegional() {
-  if (!selectedRegional) return [];
-  return getAllAlimentadoresForRegional(selectedRegional);
+  return getCatalogForRegional(selectedRegional);
 }
 
 function isAllAlimentadoresSelected() {
+  // ✅ TODOS = sem filtro de alimentadores
+  if (String(selectedRegional || '').toUpperCase() === 'TODOS') return true;
+
   const catalog = getCatalogForSelectedRegional();
   if (!catalog.length) return false;
   return selectedAlimentadores.size === catalog.length;
@@ -64,6 +80,10 @@ function isAllAlimentadoresSelected() {
 
 function alimentadorFilterActive() {
   if (!selectedRegional) return false;
+
+  // ✅ TODOS = nunca filtra por alimentador
+  if (String(selectedRegional).toUpperCase() === 'TODOS') return false;
+
   if (selectedAlimentadores.size === 0) return false;
   if (isAllAlimentadoresSelected()) return false; // TODOS => sem filtro
   return true;
@@ -97,6 +117,12 @@ function updateAlimentadoresBadge() {
     return;
   }
 
+  // ✅ TODOS primeiro (não depende de catálogo)
+  if (String(selectedRegional).toUpperCase() === 'TODOS') {
+    setBadge('Alimentadores: TODOS (todas regionais)');
+    return;
+  }
+
   const catalog = getCatalogForSelectedRegional();
   if (!catalog.length) {
     setBadge('Alimentadores: —');
@@ -117,6 +143,9 @@ function updateAlimentadoresBadge() {
 }
 
 function validateAlimentadoresSelection(silent = false) {
+  // ✅ TODOS não exige escolha
+  if (String(selectedRegional).toUpperCase() === 'TODOS') return true;
+
   if (!selectedRegional) {
     if (!silent) showToast('Selecione uma Regional primeiro.', 'error');
     return false;
@@ -190,15 +219,17 @@ function renderEmptyState() {
 function setRegionalUI(regional) {
   selectedRegional = regional;
 
+  const btnTodos = document.getElementById('btnRegionalTodos');
   const btnAtl = document.getElementById('btnRegionalAtlantico');
   const btnNor = document.getElementById('btnRegionalNorte');
   const btnCN = document.getElementById('btnRegionalCentroNorte');
 
-  [btnAtl, btnNor, btnCN].forEach(b => b?.classList.remove('active'));
+  [btnAtl, btnNor, btnCN, btnTodos].forEach(b => b?.classList.remove('active'));
 
   if (regional === 'ATLANTICO') btnAtl?.classList.add('active');
   if (regional === 'NORTE') btnNor?.classList.add('active');
   if (regional === 'CENTRO NORTE') btnCN?.classList.add('active');
+  if (regional === 'TODOS') btnTodos?.classList.add('active');
 
   const label = document.getElementById('regionalAtualLabel');
   if (label) label.textContent = regional ? regional : '—';
@@ -264,11 +295,11 @@ const applyFiltersDebounced = debounce(async () => {
   const df = dataFinal ? dataFinal : '';
 
   if (!selectedRegional) {
-    showToast('Selecione uma Regional (ATLANTICO / NORTE / CENTRO NORTE) antes de aplicar.', 'error');
+    showToast('Selecione uma Regional (TODOS / ATLANTICO / NORTE / CENTRO NORTE) antes de aplicar.', 'error');
     return;
   }
 
-  // ✅ exige escolha de alimentadores
+  // ✅ exige escolha de alimentadores (exceto TODOS)
   if (!validateAlimentadoresSelection(false)) return;
 
   if (!di && !df) {
@@ -370,6 +401,38 @@ function confirmAddInfo() {
 }
 
 /**
+ * Modal Campo de Inspeção (único, sem duplicar listeners)
+ */
+function initInspecaoModal() {
+  const btn = document.getElementById('btnCampoInspecao');
+  const modal = document.getElementById('modalInspecao');
+  if (!btn || !modal) return;
+
+  const closeBtn = document.getElementById('modalInspecaoClose');
+  const backdrop = modal.querySelector('.modal-backdrop');
+
+  const abrir = () => {
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  };
+
+  const fechar = () => {
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  };
+
+  btn.addEventListener('click', abrir);
+  closeBtn?.addEventListener('click', fechar);
+  backdrop?.addEventListener('click', fechar);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') fechar();
+  });
+}
+
+/**
  * Inicializar event listeners
  */
 function initEventListeners() {
@@ -450,6 +513,9 @@ function initEventListeners() {
 
     try { updateHeatmap(ocorrencias); } catch (_) {}
   });
+
+  // Modal inspeção (único)
+  initInspecaoModal();
 }
 
 /**
@@ -471,10 +537,13 @@ async function init() {
     getSelectedRegional: () => selectedRegional,
     onMissingRegional: () => showToast('Selecione uma Regional primeiro.', 'error')
   });
- 
 
-  // Badge abre modal
+  // Badge abre modal (exceto TODOS)
   document.getElementById('badgeOpenAlimentadores')?.addEventListener('click', () => {
+    if (String(selectedRegional || '').toUpperCase() === 'TODOS') {
+      showToast('Em "TODOS" não há seleção de alimentadores. Apenas escolha o período e aplique.', 'info');
+      return;
+    }
     alimModal.open();
   });
 
@@ -492,7 +561,7 @@ async function init() {
     }
 
     if (mode === 'TODOS') {
-      const all = getAllAlimentadoresForRegional(selectedRegional);
+      const all = getCatalogForSelectedRegional();
       selectedAlimentadores = new Set(all.map(a => normKey(a)));
     } else {
       selectedAlimentadores = new Set(alims.map(a => normKey(a)));
@@ -510,7 +579,7 @@ async function init() {
     }
   });
 
-  // Regional -> abre modal
+  // Regional -> abre modal (exceto TODOS)
   document.getElementById('btnRegionalAtlantico')?.addEventListener('click', () => {
     setRegionalUI('ATLANTICO');
     setMapRegional('ATLANTICO');
@@ -544,6 +613,19 @@ async function init() {
     alimModal.open();
   });
 
+  // ✅ TODOS (não abre modal)
+  document.getElementById('btnRegionalTodos')?.addEventListener('click', () => {
+    setRegionalUI('TODOS');
+    setMapRegional('TODOS');
+
+    currentData = [];
+    selectedAdditionalColumns = [];
+    selectedAlimentadores = new Set(); // sem filtro
+
+    renderEmptyState();
+    showToast('Regional selecionada: TODOS. Informe período e clique em Aplicar.', 'success');
+  });
+
   updateAlimentadoresBadge();
 }
 
@@ -553,67 +635,3 @@ if (document.readyState === 'loading') {
 } else {
   init();
 }
-function openModalInspecao() {
-  const modal = document.getElementById('modalInspecao');
-  if (!modal) return;
-
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden', 'false');
-}
-
-function closeModalInspecao() {
-  const modal = document.getElementById('modalInspecao');
-  if (!modal) return;
-
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden', 'true');
-}
-
-// 1) ligar no seu botão (ajuste o seletor)
-document.getElementById('btnCampoInspecao')?.addEventListener('click', openModalInspecao);
-
-// 2) fechar no X
-document.getElementById('modalInspecaoClose')?.addEventListener('click', closeModalInspecao);
-
-// 3) fechar no clique do fundo
-document.querySelector('#modalInspecao .modal-backdrop')?.addEventListener('click', closeModalInspecao);
-
-// 4) fechar no ESC
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModalInspecao();
-});
-/* =========================
-   MODAL CAMPO DE INSPEÇÃO
-========================= */
-
-document.addEventListener('DOMContentLoaded', () => {
-  const btn = document.getElementById('btnCampoInspecao');
-  const modal = document.getElementById('modalInspecao');
-
-  if (!btn || !modal) return;
-
-  const closeBtn = modal.querySelector('.modal-close');
-  const backdrop = modal.querySelector('.modal-backdrop');
-
-  function abrirModal() {
-    modal.classList.remove('hidden');
-    document.body.style.overflow = 'hidden'; // trava scroll da página
-  }
-
-  function fecharModal() {
-    modal.classList.add('hidden');
-    document.body.style.overflow = ''; // libera scroll
-  }
-
-  btn.addEventListener('click', abrirModal);
-
-  closeBtn?.addEventListener('click', fecharModal);
-
-  backdrop?.addEventListener('click', fecharModal);
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      fecharModal();
-    }
-  });
-});

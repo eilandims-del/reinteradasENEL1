@@ -81,6 +81,7 @@ static normalizeRegional(value) {
     .replace(/\s+/g, ' ')
     .trim();
 
+
   // ✅ CENTRO NORTE (aceita exatamente "C.NORTE" ou "CENTRO NORTE")
   // Também aceito "C NORTE" e "CNORTE" se alguém vier sem ponto
   const cnSet = new Set(['C.NORTE', 'CENTRO NORTE', 'C NORTE', 'CNORTE']);
@@ -92,6 +93,8 @@ static normalizeRegional(value) {
 
   // ✅ ATLANTICO (APENAS se for exatamente ATLANTICO/ATLÂNTICO)
   if (cleaned === 'ATLANTICO') return 'ATLANTICO';
+
+  if (cleaned === 'TODOS' || cleaned === 'ALL') return 'TODOS';
 
   return '';
 }
@@ -284,21 +287,53 @@ const pickRegionalFromRow = (row) => {
       const regional = this.normalizeRegional(filters.regional);
       const di = String(filters.dataInicial || "").trim();
       const df = String(filters.dataFinal || "").trim();
-
-      if (!regional) return { success: true, data: [] };
-
+  
       const colRef = collection(db, this.COLLECTION_NAME);
-
+  
+      // helper para montar query por regional
+      const runQueryForRegional = async (reg) => {
+        const clauses = [where("REGIONAL", "==", reg)];
+        if (di) clauses.push(where("DATA", ">=", di));
+        if (df) clauses.push(where("DATA", "<=", df));
+  
+        const q = query(colRef, ...clauses, orderBy("DATA", "desc"), limit(5000));
+        const snap = await getDocs(q);
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      };
+  
+      // ✅ TODOS = junta ATLANTICO + NORTE + CENTRO NORTE
+      if (regional === 'TODOS') {
+        const regs = ['ATLANTICO', 'NORTE', 'CENTRO NORTE'];
+  
+        // roda paralelo
+        const parts = await Promise.all(regs.map(r => runQueryForRegional(r)));
+  
+        // une + remove duplicados por id
+        const byId = new Map();
+        parts.flat().forEach(row => byId.set(row.id, row));
+  
+        // ordena por DATA desc (string YYYY-MM-DD funciona bem)
+        const merged = Array.from(byId.values()).sort((a, b) => {
+          const da = String(a.DATA || '');
+          const dbb = String(b.DATA || '');
+          return dbb.localeCompare(da);
+        });
+  
+        // se quiser limitar:
+        return { success: true, data: merged.slice(0, 5000) };
+      }
+  
+      // regional única (comportamento atual)
+      if (!regional) return { success: true, data: [] };
+  
       const clauses = [where("REGIONAL", "==", regional)];
       if (di) clauses.push(where("DATA", ">=", di));
       if (df) clauses.push(where("DATA", "<=", df));
-
-      // Firestore exige orderBy no campo do range
+  
       const q = query(colRef, ...clauses, orderBy("DATA", "desc"), limit(5000));
-
       const snap = await getDocs(q);
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
+  
       return { success: true, data };
     } catch (error) {
       console.error("[GET DATA]", error);
