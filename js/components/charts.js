@@ -80,11 +80,11 @@ function openDetails(tipo, nome, ocorrencias) {
   openModal('modalDetalhes');
 }
 
-/** ✅ Plugin de % para BARRAS horizontais */
+/** ✅ Plugin de % para BARRAS horizontais (CORRIGIDO - nunca corta) */
 const barPercentLabelsPlugin = {
   id: 'barPercentLabelsPlugin',
   afterDatasetsDraw(chart, args, opts) {
-    const { ctx } = chart;
+    const { ctx, chartArea } = chart;
 
     const datasetIndex = 0;
     const dataset = chart.data.datasets?.[datasetIndex];
@@ -100,10 +100,9 @@ const barPercentLabelsPlugin = {
     const fontSize = Number(opts?.fontSize ?? 12);
     const fontWeight = String(opts?.fontWeight ?? 900);
     const fontFamily = String(opts?.fontFamily ?? "'Inter', 'Segoe UI', sans-serif");
-    const color = String(opts?.color ?? '#0A4A8C');
+    const defaultColor = String(opts?.color ?? '#0A4A8C');
 
     ctx.save();
-    ctx.fillStyle = color;
     ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
     ctx.textBaseline = 'middle';
 
@@ -114,12 +113,31 @@ const barPercentLabelsPlugin = {
       const pct = (v / total) * 100;
       if (pct < minPctToShow) return;
 
-      // barra horizontal: "fim" é o x do elemento
+      const label = `${pct.toFixed(1)}%`;
+
       const x = barEl.x;
       const y = barEl.y;
 
-      const label = `${pct.toFixed(1)}%`;
-      ctx.fillText(label, x + 8, y);
+      const textWidth = ctx.measureText(label).width;
+      const padding = 6;
+
+      let xPos = x + 8;
+      let color = defaultColor;
+
+      // Se estourar para fora do gráfico, coloca dentro da barra
+      if (xPos + textWidth > chartArea.right - padding) {
+        const insideX = x - textWidth - 8;
+
+        if (insideX > chartArea.left + padding) {
+          xPos = insideX;
+          color = '#FFFFFF'; // melhor contraste dentro da barra
+        } else {
+          xPos = chartArea.right - textWidth - padding;
+        }
+      }
+
+      ctx.fillStyle = color;
+      ctx.fillText(label, xPos, y);
     });
 
     ctx.restore();
@@ -214,6 +232,7 @@ export function renderChartCausa(data) {
       responsive: true,
       indexAxis: 'y',
       maintainAspectRatio: false,
+      layout: { padding: { right: 44 } },
 
       // ✅ some com os nomes do eixo (fica só barras)
       scales: {
@@ -315,6 +334,7 @@ export function renderChartAlimentador(data) {
       responsive: true,
       indexAxis: 'y',
       maintainAspectRatio: false,
+      layout: { padding: { right: 44 } },
 
       // ✅ some com os nomes do eixo (fica só barras)
       scales: {
