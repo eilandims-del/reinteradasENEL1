@@ -1617,13 +1617,11 @@ input:focus, select:focus{
   width: min(920px, 96vw);
   max-height: 88vh;
   border-radius: 16px;
-  overflow: hidden;
 }
 
 #modalAlimentadores .modal-body{
   padding: 0;
   background: #f6f8fc;
-  overflow: auto; /* scroll dentro do modal */
 }
 
 /* Topbar fixa */
@@ -1722,3 +1720,37 @@ input:focus, select:focus{
     width: 100%;
   }
 }
+
+#modalAlimentadores .modal-content{
+  width: min(920px, 96vw);
+  max-height: 88vh;
+  border-radius: 16px;
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+}
+
+#modalAlimentadores .modal-body{
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  padding: 0 !important;
+  background: #f6f8fc;
+  overflow: hidden !important;
+}
+
+/* 🔥 SCROLL SOMENTE NA LISTA */
+#modalAlimentadores #alimListModal{
+  flex: 1 !important;
+  overflow-y: auto !important;
+  min-height: 0 !important;  /* 🔥 ESSENCIAL p/ flex scroll funcionar */
+  padding: 12px !important;
+}
+
+/* Scrollbar */
+#modalAlimentadores #alimListModal::-webkit-scrollbar{ width: 8px; }
+#modalAlimentadores #alimListModal::-webkit-scrollbar-thumb{
+  background: rgba(0,0,0,.25);
+  border-radius: 10px;
+}
+#modalAlimentadores #alimListModal::-webkit-scrollbar-track{ background: transparent; }
