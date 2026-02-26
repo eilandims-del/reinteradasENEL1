@@ -338,51 +338,41 @@ FILE: index.html
   </div>
 
 
-<!-- Modal - Alimentadores -->
+<!-- MODAL ALIMENTADORES -->
 <div id="modalAlimentadores" class="modal">
-  <div class="modal-content modal-sm alim-modal">
-    <div class="modal-header alim-header">
-      <h2><i class="fas fa-diagram-project"></i> Selecionar Alimentadores</h2>
-
-      <button id="fecharModalAlim" class="modal-close" title="Fechar">
-        <i class="fas fa-times"></i>
-      </button>
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2><i class="fa-solid fa-route"></i> Selecionar Alimentadores</h2>
+      <button class="modal-close" onclick="window.closeModal?.('modalAlimentadores')">✕</button>
     </div>
 
-    <div class="modal-body alim-body">
-      <!-- ✅ TOPBAR FIXA -->
-      <div class="alim-toolbar">
-        <button id="btnAlimAllModal" class="btn btn-primary btn-sm" title="Selecionar TODOS">
-          <i class="fas fa-list"></i> TODOS
-        </button>
+    <div class="modal-body">
+      <!-- TOPBAR FIXA -->
+      <div class="alim-topbar">
+        <div class="alim-topbar-row">
+          <button id="btnAlimAllModal" class="btn btn-secondary btn-sm" type="button">
+            <i class="fa-solid fa-list"></i> TODOS
+          </button>
 
-        <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" title="Limpar seleção">
-          <i class="fas fa-eraser"></i> Limpar
-        </button>
+          <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" type="button">
+            <i class="fa-solid fa-eraser"></i> Limpar
+          </button>
 
-        <input
-          id="alimSearchModal"
-          type="text"
-          placeholder="Buscar alimentador..."
-          class="alim-search"
-        />
+          <input id="alimSearchModal" type="search" placeholder="Buscar alimentador..." />
 
-        <button id="btnConfirmarAlimModal" class="btn btn-dark btn-sm alim-confirm">
-          <i class="fas fa-check"></i> CONFIRMAR
-        </button>
-
-        <div id="alimHintModal" class="alim-hint">
-          Escolha <b>TODOS</b> ou selecione <b>1+</b> alimentadores.
+          <button id="btnConfirmarAlimModal" class="alim-confirm" type="button">
+            <i class="fa-solid fa-check"></i> CONFIRMAR
+          </button>
         </div>
+
+        <div id="alimHintModal" class="alim-hint"></div>
       </div>
 
-      <!-- ✅ LISTA COM SCROLL -->
-      <div id="alimListModal" class="alim-list"></div>
+      <!-- LISTA -->
+      <div id="alimListModal"></div>
     </div>
   </div>
 </div>
-
-
 
   <!-- Toast Notification -->
   <div id="toast" class="toast">

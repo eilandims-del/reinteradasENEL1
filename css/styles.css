@@ -1608,3 +1608,117 @@ input:focus, select:focus{
     flex-direction: column;
   }
 }
+/* =========================================================
+   MODAL ALIMENTADORES - TOPBAR ALINHADA (BLOCO VENCEDOR)
+   Cole no FINAL do styles.css
+========================================================= */
+
+#modalAlimentadores .modal-content{
+  width: min(920px, 96vw);
+  max-height: 88vh;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+#modalAlimentadores .modal-body{
+  padding: 0;
+  background: #f6f8fc;
+  overflow: auto; /* scroll dentro do modal */
+}
+
+/* Topbar fixa */
+#modalAlimentadores .alim-topbar{
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: rgba(246,248,252,.96);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding: 10px 12px;
+}
+
+/* Grid alinhado: TODOS | Limpar | Buscar | Confirmar */
+#modalAlimentadores .alim-topbar-row{
+  display: grid;
+  grid-template-columns: auto auto minmax(180px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#modalAlimentadores .alim-topbar .btn{
+  padding: 7px 10px;
+  font-size: .85rem;
+  border-radius: 10px;
+  line-height: 1;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+/* Input busca ocupa o “meio” e não estoura */
+#modalAlimentadores #alimSearchModal{
+  height: 34px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.14);
+  background: #fff;
+  font-size: .9rem;
+}
+
+#modalAlimentadores #alimSearchModal:focus{
+  outline: none;
+  border-color: rgba(11,87,208,.55);
+  box-shadow: 0 0 0 3px rgba(11,87,208,.15);
+}
+
+/* Confirmar fixo e alinhado */
+#modalAlimentadores .alim-confirm{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.10);
+  background: #0b57d0;
+  color: #fff;
+  font-weight: 950;
+  font-size: .85rem;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(11,87,208,.18);
+}
+
+#modalAlimentadores .alim-confirm:hover{ filter: brightness(1.03); }
+#modalAlimentadores .alim-confirm:active{ transform: translateY(1px); }
+
+/* Hint abaixo da linha de botões */
+#modalAlimentadores .alim-hint,
+#modalAlimentadores #alimHintModal{
+  margin-top: 8px;
+  font-size: .88rem;
+  color: rgba(0,0,0,.62);
+  font-weight: 800;
+}
+
+/* Lista */
+#modalAlimentadores #alimListModal{
+  padding: 12px;
+}
+
+/* MOBILE: quebra bonito (Buscar e Confirmar viram full width) */
+@media (max-width: 720px){
+  #modalAlimentadores .alim-topbar-row{
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #modalAlimentadores #alimSearchModal{
+    grid-column: 1 / -1;
+  }
+
+  #modalAlimentadores .alim-confirm{
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
