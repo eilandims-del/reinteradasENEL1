@@ -75,21 +75,22 @@ export class DataService {
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '');
   
-    const cleaned = raw.replace(/\s+/g, ' ').trim();
+    // remove tudo que não for letra/número e junta
+    // ex: "C. NORTE", "C .NORTE", "C-NORTE" => "CNORTE"
+    const compact = raw.replace(/[^A-Z0-9]/g, '');
   
     // ✅ TODOS
-    if (cleaned === 'TODOS' || cleaned === 'TODAS') return 'TODOS';
+    if (compact === 'TODOS' || compact === 'TODAS') return 'TODOS';
   
-    // ✅ CENTRO NORTE
-    const cn = cleaned.replace(/\./g, '');
-    if (cn === 'CNORTE' || cn === 'CNORTE' || cn === 'CNORTE' || cn === 'CENTRO NORTE'.replace(/\./g,'')) return 'CENTRO NORTE';
-    if (cleaned === 'C.NORTE' || cleaned === 'CENTRO NORTE' || cleaned === 'C NORTE' || cleaned === 'CNORTE') return 'CENTRO NORTE';
+    // ✅ CENTRO NORTE (todas variações)
+    // "CNORTE", "CNORTE", "CENTRONORTE", "CNORTECE" (se alguém inventar) -> ajuste se precisar
+    if (compact === 'CNORTE' || compact === 'CENTRONORTE') return 'CENTRO NORTE';
   
     // ✅ NORTE
-    if (cleaned === 'NORTE') return 'NORTE';
+    if (compact === 'NORTE') return 'NORTE';
   
     // ✅ ATLANTICO
-    if (cleaned === 'ATLANTICO') return 'ATLANTICO';
+    if (compact === 'ATLANTICO') return 'ATLANTICO';
   
     return '';
   }
@@ -189,20 +190,21 @@ const pickRegionalFromRow = (row) => {
             const docId = `${uploadId}_${rowIndex}`;
             const ref = doc(db, this.COLLECTION_NAME, docId);
 
-            // ✅ regional por linha (se existir) senão cai no fallback do box
-        const rowRegional = pickRegionalFromRow(item);
+          // ✅ regional por linha (se existir) senão cai no fallback do box
+          const rowRegional = pickRegionalFromRow(item);
+          const finalRegional = rowRegional || fallbackRegional;
 
-        // se não achou regional na linha, NÃO salva (evita contaminar)
-        if (!rowRegional) return;
+          // se não achou em lugar nenhum, aí sim não salva (evita contaminar)
+          if (!finalRegional) return;
 
-        batch.set(ref, {
-          ...item,
-          REGIONAL: rowRegional,
-          regional: rowRegional,
-          uploadId,
-          rowIndex,
-          createdAt: serverTimestamp()
-        }, { merge: true });
+          batch.set(ref, {
+            ...item,
+            REGIONAL: finalRegional,
+            regional: finalRegional,
+            uploadId,
+            rowIndex,
+            createdAt: serverTimestamp()
+          }, { merge: true });
           });
 
           await batch.commit();
