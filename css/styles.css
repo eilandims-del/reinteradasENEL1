@@ -1755,24 +1755,10 @@ input:focus, select:focus{
 }
 #modalAlimentadores #alimListModal::-webkit-scrollbar-track{ background: transparent; }
 
-/* Mapa maior e mais “quadrado” */
 #mapaCeara{
   width: 100%;
-  aspect-ratio: 1 / 1;   /* quadrado */
-  height: auto;         /* deixa o aspect-ratio mandar */
-  min-height: 520px;    /* garante bom tamanho */
+  aspect-ratio: 16 / 9;
+  max-height: 520px;
+  min-height: 380px;
   border-radius: 14px;
-}
-
-/* No desktop grande, deixa ainda maior */
-@media (min-width: 1100px){
-  #mapaCeara{ min-height: 620px; }
-}
-
-/* No mobile, evita ficar alto demais */
-@media (max-width: 600px){
-  #mapaCeara{
-    aspect-ratio: 4 / 5;  /* um pouco menos alto */
-    min-height: 420px;
-  }
 }
