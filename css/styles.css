@@ -1757,8 +1757,7 @@ input:focus, select:focus{
 
 #mapaCeara{
   width: 100%;
-  aspect-ratio: 16 / 9;
-  max-height: 520px;
-  min-height: 380px;
+  /* ✅ Cabe em uma tela padrão sem ficar gigante */
+  height: clamp(380px, 55vh, 520px);
   border-radius: 14px;
 }

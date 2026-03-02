@@ -243,7 +243,8 @@ const ALIM_FILES = {
   'CENTRO NORTE': { type: 'kml', path: 'assets/doc.kml' },
   'ATLANTICO': { type: 'kmz', path: 'assets/atlantico.kmz' },
   'NORTE': { type: 'kmz', path: 'assets/norte.kmz' },
-  'TODOS': null
+  // ✅ TODOS: será carregado como merge das 3 regionais acima
+  'TODOS': 'MERGE_ALL'
 };
 
 function parseKmlLinesToIndex(kmlText) {
@@ -324,34 +325,63 @@ async function loadAlimentadoresForRegionOnce(regionKey) {
     return;
   }
 
+  // helper para carregar um KML/KMZ e retornar {centers, linesByBase}
+  const loadOne = async (oneCfg) => {
+    if (!oneCfg || typeof oneCfg !== 'object') return { centers: {}, linesByBase: {} };
+
+    if (!window.toGeoJSON) throw new Error('toGeoJSON não encontrado (script não carregou).');
+    if (!window.JSZip && oneCfg.type === 'kmz') throw new Error('JSZip não encontrado (script não carregou).');
+
+    let kmlText = '';
+    const res = await fetch(oneCfg.path, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    if (oneCfg.type === 'kml') {
+      kmlText = await res.text();
+    } else {
+      const buf = await res.arrayBuffer();
+      const zip = await window.JSZip.loadAsync(buf);
+      const kmlFileName = Object.keys(zip.files).find(n => n.toLowerCase().endsWith('.kml'));
+      if (!kmlFileName) throw new Error('KMZ sem arquivo .kml interno');
+      kmlText = await zip.files[kmlFileName].async('text');
+    }
+
+    return parseKmlLinesToIndex(kmlText);
+  };
+
   alimLoadPromise = (async () => {
     try {
-      if (!window.toGeoJSON) throw new Error('toGeoJSON não encontrado (script não carregou).');
-      if (!window.JSZip && cfg.type === 'kmz') throw new Error('JSZip não encontrado (script não carregou).');
+      // ✅ TODOS: merge das 3 regionais (tramos)
+      if (cfg === 'MERGE_ALL') {
+        const regs = ['ATLANTICO', 'NORTE', 'CENTRO NORTE'];
+        const mergedCenters = {};
+        const mergedLines = {};
 
-      let kmlText = '';
+        for (const rr of regs) {
+          const oneCfg = ALIM_FILES[rr];
+          const { centers, linesByBase } = await loadOne(oneCfg);
 
-      if (cfg.type === 'kml') {
-        const res = await fetch(cfg.path, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        kmlText = await res.text();
+          // merge centers
+          Object.entries(centers || {}).forEach(([k, v]) => {
+            if (!mergedCenters[k]) mergedCenters[k] = v;
+          });
+
+          // merge lines
+          Object.entries(linesByBase || {}).forEach(([k, lines]) => {
+            if (!mergedLines[k]) mergedLines[k] = [];
+            mergedLines[k].push(...(lines || []));
+          });
+        }
+
+        alimentadorCenters = mergedCenters;
+        alimentadorLines = mergedLines;
+        alimLoadedRegion = reg;
       } else {
-        const res = await fetch(cfg.path, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = await res.arrayBuffer();
-
-        const zip = await window.JSZip.loadAsync(buf);
-        const kmlFileName = Object.keys(zip.files).find(n => n.toLowerCase().endsWith('.kml'));
-        if (!kmlFileName) throw new Error('KMZ sem arquivo .kml interno');
-
-        kmlText = await zip.files[kmlFileName].async('text');
+        const { centers, linesByBase } = await loadOne(cfg);
+        alimentadorCenters = centers || {};
+        alimentadorLines = linesByBase || {};
+        alimLoadedRegion = reg;
       }
-
-      const { centers, linesByBase } = parseKmlLinesToIndex(kmlText);
-
-      alimentadorCenters = centers || {};
-      alimentadorLines = linesByBase || {};
-      alimLoadedRegion = reg;
 
       console.log('[ALIM] carregado p/ regional:', reg, 'bases:', Object.keys(alimentadorCenters).length);
     } catch (e) {
@@ -512,9 +542,9 @@ function ensureMapUI() {
   const btnBaseSAT = box.querySelector('#btnBaseSAT');
 
   const paintButtons = () => {
-    // ✅ TODOS não tem ALIMENTADOR (ALIM_FILES['TODOS'] = null)
-    const alimDisabled = (String(currentRegion || '').toUpperCase() === 'TODOS');
-    btnAlim.disabled = alimDisabled;
+    // ✅ ALIMENTADOR disponível em TODAS as regionais (TODOS faz merge dos KML/KMZ)
+    const alimDisabled = false;
+    btnAlim.disabled = false;
 
     btnConj.style.cssText = styleBtnBase + (mode === 'CONJUNTO' ? styleActive : styleInactive);
     btnAlim.style.cssText  = styleBtnBase + (mode === 'ALIMENTADOR' ? styleActive : styleInactive) + (alimDisabled ? styleDisabled : '');
@@ -561,12 +591,6 @@ function ensureMapUI() {
   });
 
   btnAlim.addEventListener('click', async () => {
-    // ✅ bloqueia ALIMENTADOR em TODOS
-    if (String(currentRegion || '').toUpperCase() === 'TODOS') {
-      mode = 'CONJUNTO';
-      paintButtons();
-      return;
-    }
     if (mode === 'ALIMENTADOR') return;
     mode = 'ALIMENTADOR';
     paintButtons();
@@ -665,31 +689,6 @@ export function initMap() {
 export function setMapRegional(regional) {
   currentRegion = normalizeRegionalKey(regional);
   if (map) updateMapRegionalLabel();
-
-  // ✅ MICRO-AJUSTE:
-  // "TODOS" não possui ALIM_FILES, então força o modo CONJUNTO (e repinta botões)
-  if (String(currentRegion || '').toUpperCase() === 'TODOS' && mode === 'ALIMENTADOR') {
-    mode = 'CONJUNTO';
-
-    // repinta botões imediatamente (se UI já montou)
-    try {
-      if (btnConjRef && btnAlimRef) {
-        const base = 'padding:6px 10px;border-radius:8px;border:1px solid #ddd;cursor:pointer;font-weight:800;';
-        const active = 'background:#0A4A8C;color:#fff;border-color:#0A4A8C;';
-        const inactive = 'background:#fff;color:#111;border-color:#ddd;';
-        btnConjRef.style.cssText = base + active;
-        btnAlimRef.style.cssText = base + inactive + 'opacity:0.45; cursor:not-allowed;';
-        btnAlimRef.disabled = true;
-      }
-    } catch (_) {}
-
-    // redesenha sem travar a call stack
-    if (lastData && lastData.length) {
-      setTimeout(() => {
-        try { updateHeatmap(lastData); } catch (_) {}
-      }, 0);
-    }
-  }
 }
 
 export function resetMap() {
@@ -839,12 +838,6 @@ export async function updateHeatmap(data) {
     return;
   }
 
-  // ✅ proteção extra: se alguém tentar ALIMENTADOR em TODOS, força CONJUNTO
-  if (String(currentRegion || '').toUpperCase() === 'TODOS') {
-    mode = 'CONJUNTO';
-    return updateHeatmap(lastData);
-  }
-
   await loadAlimentadoresForRegionOnce(currentRegion);
   if (seq !== renderSeq) return;
 
@@ -955,6 +948,9 @@ export async function updateEstruturasPins(rows, opts = {}) {
   const regional = (opts.regional || '').toUpperCase().trim();
   const catSet = new Set((opts.categories || ['CD','F','R']).map(c => String(c).toUpperCase().trim()));
   const alimFilter = String(opts.alimentadorBase || 'TODOS').toUpperCase().trim();
+
+  // ✅ Nenhuma categoria selecionada => não exibe nada (apenas garante limpeza do layer)
+  if (!catSet.size) return { total: 0, shown: 0, matches: [] };
 
   const data = Array.isArray(rows) ? rows : [];
   if (!data.length) return { total: 0, shown: 0 };

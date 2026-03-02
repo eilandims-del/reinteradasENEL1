@@ -20,7 +20,9 @@ function getSelectedCats() {
   if (cd) out.push('CD');
   if (f) out.push('F');
   if (r) out.push('R');
-  return out.length ? out : ['CD','F','R'];
+  // ✅ Se nenhum dispositivo estiver marcado, NÃO exibe nada.
+  // (Antes retornava todos, o que impedia "sumir" do mapa.)
+  return out;
 }
 
 function setStatus(txt) {
@@ -96,6 +98,16 @@ async function run() {
 
   const alimBase = alimSelect?.value || 'TODOS';
   const cats = getSelectedCats();
+
+  // ✅ Se nenhum dispositivo estiver marcado, limpa tudo e sai.
+  if (!cats.length) {
+    setStatus('nenhum dispositivo selecionado');
+    setList([]);
+    try {
+      await updateEstruturasPins([], { regional, alimentadorBase: alimBase, categories: [] });
+    } catch (_) {}
+    return;
+  }
 
   setStatus('carregando...');
   const res = await updateEstruturasPins(lastCtx.rows, {
