@@ -86,6 +86,7 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
   // Ordem fixa dos campos principais
   const fixedFields = [
     { key: 'INCIDENCIA', label: 'INCIDÊNCIA' },
+    { key: 'NUM_CLIENTE', label: 'NUM_CLIENTE' },   // ✅ ADD
     { key: 'ELEMENTO', label: 'ELEMENTO' },
     { key: 'DATA', label: 'DATA' },
     { key: 'CAUSA', label: 'CAUSA' },

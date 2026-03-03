@@ -8,6 +8,7 @@ import { formatDate } from '../utils/helpers.js';
 let currentRankingData = [];
 let currentElementoFilter = 'TODOS'; // 'TODOS' | 'TRAFO' | 'FUSIVEL' | 'RELIGADOR'
 let elementoSearchTerm = ''; // texto de busca (normalizado)
+let currentRankingClienteData = [];
 
 let currentRankingCausaData = [];
 let currentRankingAlimentadorData = [];
@@ -143,6 +144,82 @@ export function renderRankingAlimentador(data) {
   const ranking = generateRankingByField(data, 'ALIMENT.');
   currentRankingAlimentadorData = ranking;
   renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) => openGenericDetails('ALIMENTADOR', name, ocorrencias));
+}
+
+export function renderRankingCliente(data) {
+  // Ranking por NUM_CLIENTE (com fallback de nomes comuns)
+  const ranking = generateRankingByFieldMulti(data, [
+    'NUM_CLIENTE',
+    'NUM CLIENTE',
+    'CLIENTE',
+    'COD_CLIENTE',
+    'COD CLIENTE'
+  ]);
+
+  currentRankingClienteData = ranking;
+
+  renderRankingGeneric(
+    'rankingCliente',
+    ranking,
+    (name, ocorrencias) => openClienteDetails(name, ocorrencias)
+  );
+}
+
+/**
+ * Ranking genérico aceitando múltiplos campos (pega o primeiro que existir na linha)
+ */
+function generateRankingByFieldMulti(data, fields = []) {
+  const counts = new Map();
+  const ocorrenciasMap = new Map();
+
+  (data || []).forEach(row => {
+    let value = '';
+
+    for (const f of fields) {
+      const v = String(getFieldValue(row, f) || '').trim();
+      if (v) { value = v; break; }
+    }
+
+    if (!value) return;
+
+    counts.set(value, (counts.get(value) || 0) + 1);
+
+    if (!ocorrenciasMap.has(value)) ocorrenciasMap.set(value, []);
+    ocorrenciasMap.get(value).push(row);
+  });
+
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count, ocorrencias: ocorrenciasMap.get(name) }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Abre modal com título "CLIENTE: <NUM> - <NOME>" (se houver)
+ */
+function openClienteDetails(numCliente, ocorrencias) {
+  // tenta descobrir o nome do cliente (CLI. AFE) a partir das ocorrências
+  const nome = getMostFrequentField(ocorrencias || [], 'CLI. AFE')
+            || getMostFrequentField(ocorrencias || [], 'CLI AFE')
+            || '';
+
+  const modalTitle = document.getElementById('detalhesTitulo');
+  if (modalTitle) {
+    modalTitle.textContent = nome
+      ? `CLIENTE: ${sanitizeOneLine(numCliente)} - ${sanitizeOneLine(nome)}`
+      : `CLIENTE: ${sanitizeOneLine(numCliente)}`;
+  }
+
+  const modalContent = document.getElementById('detalhesConteudo');
+  let selectedColumns = [];
+
+  if (modalContent && modalContent.dataset.selectedColumns) {
+    try { selectedColumns = JSON.parse(modalContent.dataset.selectedColumns); }
+    catch (_) { selectedColumns = []; }
+  }
+
+  // Reaproveita o mesmo preenchimento do modal
+  fillDetailsModal(String(numCliente || '').trim(), ocorrencias, selectedColumns);
+  openModal('modalDetalhes');
 }
 
 /* =========================

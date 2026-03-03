@@ -60,7 +60,7 @@ FILE: index.html
         </button>
         <a class="btn btn-secondary btn-sm" href="index.html">
           <i class="fas fa-home"></i> Página Inicial
-        </a>        
+        </a>
         <a class="btn btn-primary btn-sm" href="admin.html">
           <i class="fas fa-sign-in-alt"></i> Login
         </a>
@@ -72,7 +72,7 @@ FILE: index.html
   <main class="main-content">
     <div class="container">
 
-<!-- ✅ Seleção de Regional + Filtro de Data (unificado) -->
+      <!-- ✅ Seleção de Regional + Filtro de Data (unificado) -->
       <section class="filter-section card">
 
         <div class="regional-header">
@@ -164,15 +164,30 @@ FILE: index.html
 
               <div id="rankingElementoTotal" class="btn btn-secondary btn-sm" style="cursor: default;">
                 Reiteradas: 0
-              </div>              
+              </div>
 
               <button id="copiarRankingElemento" class="btn btn-whatsapp btn-sm" title="Copiar ranking ELEMENTO">
                 <i class="fab fa-whatsapp"></i> COPIAR
+              </button>
+
+              <!-- ✅ NOVO BOTÃO: CLIENTES -->
+              <button id="copiarRankingClientes" class="btn btn-whatsapp btn-sm" title="Copiar ranking de CLIENTES (CLI. AFE)">
+                <i class="fab fa-whatsapp"></i> CLIENTES
               </button>
             </div>
           </div>
 
           <div id="rankingElemento" class="ranking-list ranking-scroll"></div>
+        </section>
+
+        <!-- ✅ NOVO: Ranking por CLIENTE (CLI. AFE) -->
+        <section class="card ranking-card">
+          <div class="ranking-header">
+            <h2 class="section-title">
+              <i class="fa-solid fa-angle-right"></i> Ranking Clientes (CLI. AFE)
+            </h2>
+          </div>
+          <div id="rankingCliente" class="ranking-list ranking-scroll"></div>
         </section>
 
         <!-- Ranking por CAUSA -->
@@ -217,7 +232,7 @@ FILE: index.html
             • (selecione um alimentador)
           </span>
         </h2>
-      
+
         <div id="mapaCeara"></div>
 
         <!-- ✅ Painel Estruturas (abaixo do mapa) -->
@@ -226,19 +241,13 @@ FILE: index.html
             <div class="estr-title-row">
               <div class="estr-title">
                 <div class="estr-kicker">Exibição de Estruturas</div>
-        
-<!--               <div class="estr-headline">
-                  <i class="fas fa-map-pin"></i>
-                  Estruturas Reiteradas (Fusível/Trafo/Religador)
-                  <span id="estrStatus" class="estr-status">• aguardando dados</span>
-                </div>  -->
-        </div>
-        
-        <button id="estrToggle" class="estr-toggle" type="button" aria-expanded="false">
+              </div>
+
+              <button id="estrToggle" class="estr-toggle" type="button" aria-expanded="false">
                 <i class="fas fa-chevron-up"></i>
               </button>
             </div>
-        
+
             <div class="estr-controls">
               <div class="estr-group">
                 <label>Regional</label>
@@ -249,39 +258,36 @@ FILE: index.html
                   <option value="CENTRO NORTE">CENTRO NORTE</option>
                 </select>
               </div>
-        
+
               <div class="estr-group">
                 <label>Alimentador</label>
                 <select id="estrAlimentador">
                   <option value="TODOS">TODOS</option>
                 </select>
               </div>
-        
+
               <div class="estr-group estr-checks">
                 <label>Dispositivos</label>
                 <div class="estr-check-row">
-                  <!-- ✅ Padrão: nenhum dispositivo selecionado (não exibe estruturas até marcar) -->
                   <label><input type="checkbox" id="estrCatCD"> Trafo</label>
                   <label><input type="checkbox" id="estrCatF"> Fusível</label>
                   <label><input type="checkbox" id="estrCatR"> Religador</label>
                 </div>
               </div>
-        
+
               <button id="estrRecarregar" class="btn btn-secondary btn-sm" title="Recarregar estruturas">
                 <i class="fas fa-rotate"></i> Atualizar
               </button>
             </div>
           </div>
-        
+
           <div class="estr-panel-body">
             <div id="estrList" class="estr-list">
               <div class="estr-empty">Selecione Regional + Período e aplique. As estruturas aparecem quando houver reiteradas.</div>
             </div>
           </div>
         </div>
-        
       </section>
-      
 
     </div>
   </main>
@@ -290,7 +296,8 @@ FILE: index.html
   <div id="modalDetalhes" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Detalhes do ELEMENTO</h2>
+        <!-- ✅ id adicionado para permitir trocar o título dinamicamente -->
+        <h2 id="detalhesTitulo">Detalhes do ELEMENTO</h2>
         <div class="modal-header-actions">
           <button id="btnAdicionarInfo" class="btn btn-sm btn-secondary">
             <i class="fas fa-plus"></i> Adicionar Info
@@ -338,44 +345,41 @@ FILE: index.html
     </div>
   </div>
 
-
-<!-- MODAL ALIMENTADORES -->
-<div id="modalAlimentadores" class="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2><i class="fa-solid fa-route"></i> Selecionar Alimentadores</h2>
-      <button class="modal-close" onclick="window.closeModal?.('modalAlimentadores')">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <!-- TOPBAR FIXA -->
-      <div class="alim-topbar">
-        <div class="alim-topbar-row">
-          <button id="btnAlimAllModal" class="btn btn-secondary btn-sm" type="button">
-            <i class="fa-solid fa-list"></i> TODOS
-          </button>
-
-          <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" type="button">
-            <i class="fa-solid fa-eraser"></i> Limpar
-          </button>
-
-          <input id="alimSearchModal" type="search" placeholder="Buscar alimentador..." />
-
-          <button id="btnConfirmarAlimModal" class="alim-confirm" type="button">
-            <i class="fa-solid fa-check"></i> CONFIRMAR
-          </button>
-        </div>
-
-        <div id="alimHintModal" class="alim-hint"></div>
+  <!-- MODAL ALIMENTADORES -->
+  <div id="modalAlimentadores" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2><i class="fa-solid fa-route"></i> Selecionar Alimentadores</h2>
+        <button class="modal-close" onclick="window.closeModal?.('modalAlimentadores')">✕</button>
       </div>
 
-      <!-- LISTA -->
-      <div id="alimListModal"></div>
+      <div class="modal-body">
+        <div class="alim-topbar">
+          <div class="alim-topbar-row">
+            <button id="btnAlimAllModal" class="btn btn-secondary btn-sm" type="button">
+              <i class="fa-solid fa-list"></i> TODOS
+            </button>
+
+            <button id="btnAlimClearModal" class="btn btn-secondary btn-sm" type="button">
+              <i class="fa-solid fa-eraser"></i> Limpar
+            </button>
+
+            <input id="alimSearchModal" type="search" placeholder="Buscar alimentador..." />
+
+            <button id="btnConfirmarAlimModal" class="alim-confirm" type="button">
+              <i class="fa-solid fa-check"></i> CONFIRMAR
+            </button>
+          </div>
+
+          <div id="alimHintModal" class="alim-hint"></div>
+        </div>
+
+        <div id="alimListModal"></div>
+      </div>
     </div>
   </div>
-</div>
 
-  <!-- Toast Notification -->
+  <!-- Toast -->
   <div id="toast" class="toast">
     <span id="toastMessage"></span>
   </div>
@@ -414,7 +418,7 @@ FILE: index.html
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- KML / KMZ (ANTES DO MAPA / MAIN) -->
+  <!-- KML / KMZ -->
   <script src="https://unpkg.com/@tmcw/togeojson@5.6.2/dist/togeojson.umd.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 
@@ -428,25 +432,27 @@ FILE: index.html
       if (el) el.textContent = new Date().getFullYear();
     })();
   </script>
+
   <!-- Modal: Campo de Inspeção -->
-<div id="modalInspecao" class="modal hidden" aria-hidden="true">
-  <div class="modal-backdrop" data-close="1"></div>
+  <div id="modalInspecao" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop" data-close="1"></div>
 
-  <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Campo de Inspeção">
-    <div class="modal-header">
-      <div class="modal-title">Inspeção</div>
-      <button id="modalInspecaoClose" class="modal-close" type="button" aria-label="Fechar">✕</button>
-    </div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-label="Campo de Inspeção">
+      <div class="modal-header">
+        <div class="modal-title">Inspeção</div>
+        <button id="modalInspecaoClose" class="modal-close" type="button" aria-label="Fechar">✕</button>
+      </div>
 
-    <div class="modal-body">
-      <iframe
-        id="modalInspecaoFrame"
-        src="inspecao/index.html"
-        title="Ferramenta de Inspeção"
-        loading="lazy"
-      ></iframe>
+      <div class="modal-body">
+        <iframe
+          id="modalInspecaoFrame"
+          src="inspecao/index.html"
+          title="Ferramenta de Inspeção"
+          loading="lazy"
+        ></iframe>
+      </div>
     </div>
   </div>
-</div>
+
 </body>
 </html>

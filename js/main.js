@@ -152,6 +152,136 @@ function validateAlimentadoresSelection(silent = false) {
   return false;
 }
 
+/* =========================
+   ✅ Ranking CLIENTES (CLI. AFE)
+   - renderiza no painel #rankingCliente
+   - usa a visão atual (getRankingViewRows) = respeita filtro de elemento + busca + alimentadores
+   - clique abre modal com ocorrências do cliente
+========================= */
+
+function getCliAfeValue(row) {
+  return (
+    getFieldValue(row, 'CLI. AFE') ||
+    getFieldValue(row, 'CLI AFE') ||
+    getFieldValue(row, 'CLI. AFET') ||
+    getFieldValue(row, 'CLIAFE') ||
+    row?.['CLI. AFE'] ||
+    row?.['CLI AFE'] ||
+    row?.['CLI. AFET'] ||
+    ''
+  );
+}
+
+function buildClientesRanking(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const map = new Map();
+
+  for (const r of list) {
+    const raw = String(getCliAfeValue(r) ?? '').trim();
+    if (!raw) continue;
+    const k = raw.replace(/\s+/g, ' ');
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+
+  const ranking = Array.from(map.entries())
+    .map(([cliente, count]) => ({ cliente, count }))
+    .sort((a, b) => b.count - a.count);
+
+  return { ranking, distinct: map.size };
+}
+
+function openClienteDetails(cliente, allRowsInView) {
+  const ocorrencias = (Array.isArray(allRowsInView) ? allRowsInView : []).filter(r => {
+    const v = String(getCliAfeValue(r) ?? '').trim().replace(/\s+/g, ' ');
+    return v === cliente;
+  });
+
+  const titleEl = document.getElementById('detalhesTitulo');
+  if (titleEl) titleEl.textContent = `CLIENTE: ${cliente}`;
+
+  // usa as mesmas colunas adicionais selecionadas no modal
+  fillDetailsModal(cliente, ocorrencias, selectedAdditionalColumns);
+  openModal('modalDetalhes');
+}
+
+function renderRankingClientes(rowsFromRankingView) {
+  const container = document.getElementById('rankingCliente');
+  if (!container) return;
+
+  const rows = Array.isArray(rowsFromRankingView) ? rowsFromRankingView : [];
+
+  if (!rows.length) {
+    container.innerHTML =
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Sem dados na visão atual.</p>';
+    return;
+  }
+
+  const { ranking, distinct } = buildClientesRanking(rows);
+
+  if (!ranking.length) {
+    container.innerHTML =
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Não encontrei valores em <b>CLI. AFE</b> na visão atual.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  // opcional: um “resuminho” no topo
+  const topInfo = document.createElement('div');
+  topInfo.style.padding = '0.65rem 0.75rem';
+  topInfo.style.marginBottom = '0.25rem';
+  topInfo.style.fontWeight = '700';
+  topInfo.style.color = 'var(--medium-gray)';
+  topInfo.textContent = `Clientes distintos: ${distinct}`;
+  container.appendChild(topInfo);
+
+  ranking.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'ranking-item';
+    div.onclick = () => openClienteDetails(item.cliente, rows);
+
+    div.innerHTML = `
+      <span class="ranking-item-position">${idx + 1}º</span>
+      <span class="ranking-item-name">${item.cliente}</span>
+      <span class="ranking-item-count">(${item.count} vezes)</span>
+    `;
+
+    container.appendChild(div);
+  });
+}
+
+function buildClientesRankingText(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return '';
+
+  const map = new Map();
+  for (const r of list) {
+    const raw = String(getCliAfeValue(r) ?? '').trim();
+    if (!raw) continue;
+    const k = raw.replace(/\s+/g, ' ');
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+
+  if (map.size === 0) return '';
+
+  const arr = Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1]);
+
+  const di = document.getElementById('dataInicial')?.value || '';
+  const df = document.getElementById('dataFinal')?.value || '';
+  const periodo = (di || df) ? `${di || '—'} até ${df || '—'}` : '—';
+
+  const header =
+    `📌 RANKING CLIENTES (CLI. AFE)\n` +
+    `Regional: ${selectedRegional || '—'}\n` +
+    `Período: ${periodo}\n` +
+    `Reiteradas (visão atual): ${list.length}\n` +
+    `Clientes distintos: ${map.size}\n\n`;
+
+  const lines = arr.map(([cliente, qtd], idx) => `${String(idx + 1).padStart(2, '0')}. ${cliente} — ${qtd}`);
+  return header + lines.join('\n');
+}
+
 /**
  * Renderizar todos os componentes
  */
@@ -165,6 +295,9 @@ function renderAll() {
   const rowsFromRankingView = getRankingViewRows();
   updateCharts(rowsFromRankingView);
   updateHeatmap(rowsFromRankingView);
+
+  // ✅ NOVO: renderiza ranking de clientes com base na visão atual
+  renderRankingClientes(rowsFromRankingView);
 
   // ✅ Atualiza painel de estruturas com base na visão atual (ranking view)
   try {
@@ -188,6 +321,12 @@ function renderEmptyState() {
   if (rankingContainer) {
     rankingContainer.innerHTML =
       '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Selecione uma <b>Regional</b> para escolher alimentadores. Depois selecione um <b>período</b> e clique em <b>Aplicar</b>.</p>';
+  }
+
+  const rankingCliente = document.getElementById('rankingCliente');
+  if (rankingCliente) {
+    rankingCliente.innerHTML =
+      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Carregue um período para exibir o ranking de clientes.</p>';
   }
 
   try { updateCharts([]); } catch (_) {}
@@ -252,6 +391,7 @@ async function loadDataByPeriod(di, df) {
       updateRanking([]);
       updateCharts([]);
       updateHeatmap([]);
+      renderRankingClientes([]); // ✅ limpa ranking clientes também
       showToast('Sem reiteradas para os alimentadores selecionados no período.', 'error');
       return;
     }
@@ -270,6 +410,7 @@ async function loadDataByPeriod(di, df) {
   updateRanking([]);
   updateCharts([]);
   updateHeatmap([]);
+  renderRankingClientes([]); // ✅ limpa ranking clientes também
   showToast(`Nenhum dado encontrado (${selectedRegional}).`, 'error');
 }
 
@@ -436,11 +577,30 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFiltersDebounced);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
-  // Copiar ranking
+  // Copiar ranking ELEMENTO
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
     const text = generateRankingText();
     const result = await copyToClipboard(text);
     showToast(result.success ? 'Ranking copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
+  });
+
+  // ✅ Copiar ranking CLIENTES (CLI. AFE)
+  document.getElementById('copiarRankingClientes')?.addEventListener('click', async () => {
+    if (!currentData.length) {
+      showToast('Carregue um período antes de copiar CLIENTES.', 'error');
+      return;
+    }
+
+    const rows = getRankingViewRows(); // respeita filtros atuais
+    const text = buildClientesRankingText(rows);
+
+    if (!text) {
+      showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
+      return;
+    }
+
+    const result = await copyToClipboard(text);
+    showToast(result.success ? 'Clientes copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
   });
 
   // Botões filtro ELEMENTO
@@ -459,6 +619,7 @@ function initEventListeners() {
     const rows = getRankingViewRows();
     updateCharts(rows);
     updateHeatmap(rows);
+    renderRankingClientes(rows); // ✅ atualiza ranking clientes ao mudar filtro/busca
   };
 
   btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); rerenderFromRankingView(); });
