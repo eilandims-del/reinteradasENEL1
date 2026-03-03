@@ -160,12 +160,17 @@ FILE: index.html
               <div class="ranking-search">
                 <input id="searchElemento" type="text" placeholder="Pesquisar ELEMENTO..." />
                 <button id="btnClearSearchElemento" class="btn btn-secondary btn-sm" title="Limpar">×</button>
+              
+                <!-- ✅ BOTÃO CLIENTES AO LADO DA BUSCA (posição do print) -->
+                <button id="copiarRankingClientes" class="btn btn-secondary btn-sm" title="Copiar ranking de CLIENTES (CLI. AFE)">
+                  CLIENTES
+                </button>
               </div>
-
+              
               <div id="rankingElementoTotal" class="btn btn-secondary btn-sm" style="cursor: default;">
                 Reiteradas: 0
               </div>
-
+              
               <button id="copiarRankingElemento" class="btn btn-whatsapp btn-sm" title="Copiar ranking ELEMENTO">
                 <i class="fab fa-whatsapp"></i> COPIAR
               </button>
@@ -178,16 +183,6 @@ FILE: index.html
           </div>
 
           <div id="rankingElemento" class="ranking-list ranking-scroll"></div>
-        </section>
-
-        <!-- ✅ NOVO: Ranking por CLIENTE (CLI. AFE) -->
-        <section class="card ranking-card">
-          <div class="ranking-header">
-            <h2 class="section-title">
-              <i class="fa-solid fa-angle-right"></i> Ranking Clientes (CLI. AFE)
-            </h2>
-          </div>
-          <div id="rankingCliente" class="ranking-list ranking-scroll"></div>
         </section>
 
         <!-- Ranking por CAUSA -->

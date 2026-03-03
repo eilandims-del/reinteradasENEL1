@@ -8,6 +8,11 @@
  * 1) Seleciona Regional  -> abre Modal de Alimentadores (obrigatório escolher) [exceto TODOS]
  * 2) Seleciona Alimentadores (ou "TODOS") por Conjunto
  * 3) Seleciona período (data inicial/final) e clica em Aplicar
+ *
+ * ✅ Alterações desta versão:
+ * - REMOVIDO: ranking CLI.AFE em painel/card separado (#rankingCliente)
+ * - MANTIDO: botão CLIENTES (copia texto) usando a mesma visão do Ranking Elemento (getRankingViewRows)
+ * - REMOVIDAS: chamadas renderRankingClientes / elementos #rankingCliente
  */
 
 import { DataService } from './services/firebase-service.js';
@@ -153,10 +158,8 @@ function validateAlimentadoresSelection(silent = false) {
 }
 
 /* =========================
-   ✅ Ranking CLIENTES (CLI. AFE)
-   - renderiza no painel #rankingCliente
+   ✅ Ranking CLIENTES (CLI. AFE) - SOMENTE TEXTO (botão CLIENTES)
    - usa a visão atual (getRankingViewRows) = respeita filtro de elemento + busca + alimentadores
-   - clique abre modal com ocorrências do cliente
 ========================= */
 
 function getCliAfeValue(row) {
@@ -170,84 +173,6 @@ function getCliAfeValue(row) {
     row?.['CLI. AFET'] ||
     ''
   );
-}
-
-function buildClientesRanking(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  const map = new Map();
-
-  for (const r of list) {
-    const raw = String(getCliAfeValue(r) ?? '').trim();
-    if (!raw) continue;
-    const k = raw.replace(/\s+/g, ' ');
-    map.set(k, (map.get(k) || 0) + 1);
-  }
-
-  const ranking = Array.from(map.entries())
-    .map(([cliente, count]) => ({ cliente, count }))
-    .sort((a, b) => b.count - a.count);
-
-  return { ranking, distinct: map.size };
-}
-
-function openClienteDetails(cliente, allRowsInView) {
-  const ocorrencias = (Array.isArray(allRowsInView) ? allRowsInView : []).filter(r => {
-    const v = String(getCliAfeValue(r) ?? '').trim().replace(/\s+/g, ' ');
-    return v === cliente;
-  });
-
-  const titleEl = document.getElementById('detalhesTitulo');
-  if (titleEl) titleEl.textContent = `CLIENTE: ${cliente}`;
-
-  // usa as mesmas colunas adicionais selecionadas no modal
-  fillDetailsModal(cliente, ocorrencias, selectedAdditionalColumns);
-  openModal('modalDetalhes');
-}
-
-function renderRankingClientes(rowsFromRankingView) {
-  const container = document.getElementById('rankingCliente');
-  if (!container) return;
-
-  const rows = Array.isArray(rowsFromRankingView) ? rowsFromRankingView : [];
-
-  if (!rows.length) {
-    container.innerHTML =
-      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Sem dados na visão atual.</p>';
-    return;
-  }
-
-  const { ranking, distinct } = buildClientesRanking(rows);
-
-  if (!ranking.length) {
-    container.innerHTML =
-      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Não encontrei valores em <b>CLI. AFE</b> na visão atual.</p>';
-    return;
-  }
-
-  container.innerHTML = '';
-
-  // opcional: um “resuminho” no topo
-  const topInfo = document.createElement('div');
-  topInfo.style.padding = '0.65rem 0.75rem';
-  topInfo.style.marginBottom = '0.25rem';
-  topInfo.style.fontWeight = '700';
-  topInfo.style.color = 'var(--medium-gray)';
-  topInfo.textContent = `Clientes distintos: ${distinct}`;
-  container.appendChild(topInfo);
-
-  ranking.forEach((item, idx) => {
-    const div = document.createElement('div');
-    div.className = 'ranking-item';
-    div.onclick = () => openClienteDetails(item.cliente, rows);
-
-    div.innerHTML = `
-      <span class="ranking-item-position">${idx + 1}º</span>
-      <span class="ranking-item-name">${item.cliente}</span>
-      <span class="ranking-item-count">(${item.count} vezes)</span>
-    `;
-
-    container.appendChild(div);
-  });
 }
 
 function buildClientesRankingText(rows) {
@@ -296,9 +221,6 @@ function renderAll() {
   updateCharts(rowsFromRankingView);
   updateHeatmap(rowsFromRankingView);
 
-  // ✅ NOVO: renderiza ranking de clientes com base na visão atual
-  renderRankingClientes(rowsFromRankingView);
-
   // ✅ Atualiza painel de estruturas com base na visão atual (ranking view)
   try {
     const catalog = getCatalogForSelectedRegional();
@@ -321,12 +243,6 @@ function renderEmptyState() {
   if (rankingContainer) {
     rankingContainer.innerHTML =
       '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Selecione uma <b>Regional</b> para escolher alimentadores. Depois selecione um <b>período</b> e clique em <b>Aplicar</b>.</p>';
-  }
-
-  const rankingCliente = document.getElementById('rankingCliente');
-  if (rankingCliente) {
-    rankingCliente.innerHTML =
-      '<p style="text-align: center; padding: 2rem; color: var(--medium-gray);">Carregue um período para exibir o ranking de clientes.</p>';
   }
 
   try { updateCharts([]); } catch (_) {}
@@ -391,7 +307,6 @@ async function loadDataByPeriod(di, df) {
       updateRanking([]);
       updateCharts([]);
       updateHeatmap([]);
-      renderRankingClientes([]); // ✅ limpa ranking clientes também
       showToast('Sem reiteradas para os alimentadores selecionados no período.', 'error');
       return;
     }
@@ -410,7 +325,6 @@ async function loadDataByPeriod(di, df) {
   updateRanking([]);
   updateCharts([]);
   updateHeatmap([]);
-  renderRankingClientes([]); // ✅ limpa ranking clientes também
   showToast(`Nenhum dado encontrado (${selectedRegional}).`, 'error');
 }
 
@@ -584,14 +498,14 @@ function initEventListeners() {
     showToast(result.success ? 'Ranking copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
   });
 
-  // ✅ Copiar ranking CLIENTES (CLI. AFE)
+  // ✅ Copiar ranking CLIENTES (CLI. AFE) — usa visão do Ranking Elemento
   document.getElementById('copiarRankingClientes')?.addEventListener('click', async () => {
     if (!currentData.length) {
       showToast('Carregue um período antes de copiar CLIENTES.', 'error');
       return;
     }
 
-    const rows = getRankingViewRows(); // respeita filtros atuais
+    const rows = getRankingViewRows(); // ✅ respeita filtro/busca do ranking elemento
     const text = buildClientesRankingText(rows);
 
     if (!text) {
@@ -619,7 +533,6 @@ function initEventListeners() {
     const rows = getRankingViewRows();
     updateCharts(rows);
     updateHeatmap(rows);
-    renderRankingClientes(rows); // ✅ atualiza ranking clientes ao mudar filtro/busca
   };
 
   btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); rerenderFromRankingView(); });
