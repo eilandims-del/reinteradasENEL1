@@ -9,10 +9,16 @@
  * 2) Seleciona Alimentadores (ou "TODOS") por Conjunto
  * 3) Seleciona período (data inicial/final) e clica em Aplicar
  *
- * ✅ Alterações desta versão:
- * - REMOVIDO: ranking CLI.AFE em painel/card separado (#rankingCliente)
- * - MANTIDO: botão CLIENTES (copia texto) usando a mesma visão do Ranking Elemento (getRankingViewRows)
- * - REMOVIDAS: chamadas renderRankingClientes / elementos #rankingCliente
+ * ✅ NOVO (Ranking Geral por clique):
+ * - TODOS / TRAFO / FUSÍVEL / RELIGADOR => lê REITERADAS (Firestore: reinteradas)
+ * - CLIENTES => lê CLIENTES AFETADOS (Firestore: clientes_afetados)
+ *
+ * Observações:
+ * - remove bug: função duplicada getCliAfeValue
+ * - remove bug: rerenderFromRankingView inexistente
+ * - busca (#searchElemento) funciona em ambos os modos:
+ *   - REITERADAS: busca por ELEMENTO (via ranking.js)
+ *   - CLIENTES: busca por NOME do cliente (CLI. AFE)
  */
 
 import { DataService } from './services/firebase-service.js';
@@ -47,6 +53,11 @@ import { getAllAlimentadoresForRegional } from './services/alimentadores-catalog
 
 let currentData = [];
 let selectedAdditionalColumns = [];
+
+// ✅ Ranking geral por clique
+let rankingMode = 'REITERADAS'; // 'REITERADAS' | 'CLIENTES'
+let clientesCache = [];         // dados carregados de clientes (para copiar/filtrar)
+let clientesSearch = '';        // busca quando estiver em CLIENTES
 
 // ✅ Regional selecionada
 let selectedRegional = ''; // 'TODOS' | 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
@@ -158,9 +169,12 @@ function validateAlimentadoresSelection(silent = false) {
 }
 
 /* =========================
-   ✅ Ranking CLIENTES (CLI. AFE) - SOMENTE TEXTO (botão CLIENTES)
-   - usa a visão atual (getRankingViewRows) = respeita filtro de elemento + busca + alimentadores
+   CLIENTES (Ranking geral)
 ========================= */
+
+function normalizeText(v) {
+  return String(v ?? '').trim().replace(/\s+/g, ' ');
+}
 
 function getCliAfeValue(row) {
   return (
@@ -168,19 +182,82 @@ function getCliAfeValue(row) {
     getFieldValue(row, 'CLI AFE') ||
     getFieldValue(row, 'CLI. AFET') ||
     getFieldValue(row, 'CLIAFE') ||
+    getFieldValue(row, 'CLIAFET') ||
     row?.['CLI. AFE'] ||
     row?.['CLI AFE'] ||
     row?.['CLI. AFET'] ||
+    row?.['CLIAFE'] ||
+    row?.['CLIAFET'] ||
     ''
   );
+}
+
+function buildSimpleRanking(rows, getKeyFn) {
+  const map = new Map();
+  for (const r of (rows || [])) {
+    const k = normalizeText(getKeyFn(r));
+    if (!k) continue;
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function filterClientesBySearch(rows) {
+  const term = normKey(clientesSearch || '');
+  if (!term) return rows || [];
+  return (rows || []).filter(r => normKey(getCliAfeValue(r)).includes(term));
+}
+
+function renderRankingClientesNoMesmoPainel(clientRows) {
+  const container = document.getElementById('rankingElemento');
+  const totalEl = document.getElementById('rankingElementoTotal');
+
+  const filtered = filterClientesBySearch(clientRows);
+
+  if (totalEl) totalEl.textContent = `Registros: ${filtered.length}`;
+
+  if (!container) return;
+
+  if (!filtered?.length) {
+    container.innerHTML =
+      '<p style="text-align:center;padding:2rem;color:var(--medium-gray);">Nenhum dado de clientes encontrado.</p>';
+    return;
+  }
+
+  const ranking = buildSimpleRanking(filtered, (r) => getCliAfeValue(r));
+
+  if (!ranking.length) {
+    container.innerHTML =
+      '<p style="text-align:center;padding:2rem;color:var(--medium-gray);">Não encontrei valores em <b>CLI. AFE</b>.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  ranking.forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'ranking-item';
+
+    div.innerHTML = `
+      <span class="ranking-item-position">${idx + 1}º</span>
+      <span class="ranking-item-name">${item.name}</span>
+      <span class="ranking-item-count">(${item.count} vezes)</span>
+    `;
+
+    container.appendChild(div);
+  });
 }
 
 function buildClientesRankingText(rows) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return '';
 
+  const filtered = filterClientesBySearch(list);
+
   const map = new Map();
-  for (const r of list) {
+  for (const r of filtered) {
     const raw = String(getCliAfeValue(r) ?? '').trim();
     if (!raw) continue;
     const k = raw.replace(/\s+/g, ' ');
@@ -189,18 +266,13 @@ function buildClientesRankingText(rows) {
 
   if (map.size === 0) return '';
 
-  const arr = Array.from(map.entries())
-    .sort((a, b) => b[1] - a[1]);
-
-  const di = document.getElementById('dataInicial')?.value || '';
-  const df = document.getElementById('dataFinal')?.value || '';
-  const periodo = (di || df) ? `${di || '—'} até ${df || '—'}` : '—';
+  const arr = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 
   const header =
     `📌 RANKING CLIENTES (CLI. AFE)\n` +
     `Regional: ${selectedRegional || '—'}\n` +
-    `Período: ${periodo}\n` +
-    `Reiteradas (visão atual): ${list.length}\n` +
+    `Busca: ${clientesSearch || '—'}\n` +
+    `Registros (visão atual): ${filtered.length}\n` +
     `Clientes distintos: ${map.size}\n\n`;
 
   const lines = arr.map(([cliente, qtd], idx) => `${String(idx + 1).padStart(2, '0')}. ${cliente} — ${qtd}`);
@@ -208,9 +280,32 @@ function buildClientesRankingText(rows) {
 }
 
 /**
- * Renderizar todos os componentes
+ * Renderizar todos os componentes (Ranking Geral)
  */
-function renderAll() {
+async function renderAll() {
+  if (!selectedRegional) return;
+
+  // ✅ MODO CLIENTES: lê outra coleção/planilha
+  if (rankingMode === 'CLIENTES') {
+    const res = await DataService.getClientesData?.({ regional: selectedRegional });
+    const rows = (res?.success && Array.isArray(res.data)) ? res.data : [];
+
+    clientesCache = rows;
+
+    renderRankingClientesNoMesmoPainel(rows);
+
+    // gráficos/heatmap são de reiteradas
+    try { updateCharts([]); } catch (_) {}
+    try { updateHeatmap([]); } catch (_) {}
+
+    // estruturas são de reiteradas
+    try { updateEstruturasContext({ regional: selectedRegional, rows: [], catalog: [], selectedAlimentadores }); } catch (_) {}
+
+    updateAlimentadoresBadge();
+    return;
+  }
+
+  // ✅ MODO REITERADAS (comportamento atual)
   if (!currentData.length) return;
 
   const base = getDataWithAlimentadorFilter(currentData);
@@ -221,7 +316,6 @@ function renderAll() {
   updateCharts(rowsFromRankingView);
   updateHeatmap(rowsFromRankingView);
 
-  // ✅ Atualiza painel de estruturas com base na visão atual (ranking view)
   try {
     const catalog = getCatalogForSelectedRegional();
     updateEstruturasContext({
@@ -236,7 +330,7 @@ function renderAll() {
 }
 
 /**
- * Empty state (não carrega nada no F5)
+ * Empty state
  */
 function renderEmptyState() {
   const rankingContainer = document.getElementById('rankingElemento');
@@ -280,7 +374,7 @@ function setRegionalUI(regional) {
 }
 
 /**
- * Carregar dados do Firestore PARA UM PERÍODO + REGIONAL
+ * Carregar dados do Firestore PARA UM PERÍODO + REGIONAL (REITERADAS)
  */
 async function loadDataByPeriod(di, df) {
   const rankingContainer = document.getElementById('rankingElemento');
@@ -311,7 +405,7 @@ async function loadDataByPeriod(di, df) {
       return;
     }
 
-    renderAll();
+    await renderAll();
     showToast(`Filtro aplicado (${selectedRegional}): ${base.length} registro(s).`, 'success');
     return;
   }
@@ -329,7 +423,7 @@ async function loadDataByPeriod(di, df) {
 }
 
 /**
- * Aplicar filtros (com debounce)
+ * Aplicar filtros (com debounce) - REITERADAS
  */
 const applyFiltersDebounced = debounce(async () => {
   const dataInicial = document.getElementById('dataInicial')?.value;
@@ -340,6 +434,12 @@ const applyFiltersDebounced = debounce(async () => {
 
   if (!selectedRegional) {
     showToast('Selecione uma Regional (TODOS / ATLANTICO / NORTE / CENTRO NORTE) antes de aplicar.', 'error');
+    return;
+  }
+
+  // Se estiver em CLIENTES, não exige data: só renderiza clientes
+  if (rankingMode === 'CLIENTES') {
+    await renderAll();
     return;
   }
 
@@ -364,6 +464,8 @@ function clearFilters() {
   if (df) df.value = '';
 
   currentData = [];
+  clientesCache = [];
+  clientesSearch = '';
   selectedAdditionalColumns = [];
 
   setElementoSearch('');
@@ -445,7 +547,7 @@ function confirmAddInfo() {
 }
 
 /**
- * Modal Campo de Inspeção (único, sem duplicar listeners)
+ * Modal Campo de Inspeção (único)
  */
 function initInspecaoModal() {
   const btn = document.getElementById('btnCampoInspecao');
@@ -491,59 +593,111 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFiltersDebounced);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
-  // Copiar ranking ELEMENTO
+  // Copiar ranking (geral)
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
+    // CLIENTES => copia ranking clientes
+    if (rankingMode === 'CLIENTES') {
+      const text = buildClientesRankingText(clientesCache);
+      if (!text) {
+        showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
+        return;
+      }
+      const result = await copyToClipboard(text);
+      showToast(result.success ? 'Ranking CLIENTES copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
+      return;
+    }
+
+    // REITERADAS => comportamento atual
     const text = generateRankingText();
     const result = await copyToClipboard(text);
     showToast(result.success ? 'Ranking copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
   });
 
-  // ✅ Copiar ranking CLIENTES (CLI. AFE) — usa visão do Ranking Elemento
+  // ✅ Botão "CLIENTES" (se existir no seu HTML) => copia ranking clientes também
   document.getElementById('copiarRankingClientes')?.addEventListener('click', async () => {
-    if (!currentData.length) {
-      showToast('Carregue um período antes de copiar CLIENTES.', 'error');
+    // se estiver em reiteradas, tenta copiar clientes do dataset de reiteradas (caso exista CLI. AFE ali)
+    if (rankingMode === 'REITERADAS') {
+      if (!currentData.length) {
+        showToast('Carregue um período antes de copiar CLIENTES.', 'error');
+        return;
+      }
+      const rows = getRankingViewRows();
+      const text = buildClientesRankingText(rows);
+      if (!text) {
+        showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
+        return;
+      }
+      const result = await copyToClipboard(text);
+      showToast(result.success ? 'Clientes copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
       return;
     }
 
-    const rows = getRankingViewRows(); // ✅ respeita filtro/busca do ranking elemento
-    const text = buildClientesRankingText(rows);
-
+    // se estiver em CLIENTES, copia do dataset de clientes
+    const text = buildClientesRankingText(clientesCache);
     if (!text) {
       showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
       return;
     }
-
     const result = await copyToClipboard(text);
     showToast(result.success ? 'Clientes copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
   });
 
-  // Botões filtro ELEMENTO
+  // Botões filtro (Ranking Geral)
   const btnTodos = document.getElementById('btnFiltroTodos');
   const btnTrafo = document.getElementById('btnFiltroTrafo');
   const btnFusivel = document.getElementById('btnFiltroFusivel');
   const btnOutros = document.getElementById('btnFiltroReligador');
+  const btnClientes = document.getElementById('btnFiltroClientes'); // ✅ seu id
 
   const setActive = (activeBtn) => {
-    [btnTodos, btnTrafo, btnFusivel, btnOutros].forEach(b => b?.classList.remove('active'));
+    [btnTodos, btnTrafo, btnFusivel, btnOutros, btnClientes].forEach(b => b?.classList.remove('active'));
     activeBtn?.classList.add('active');
   };
 
-  const rerenderFromRankingView = () => {
-    if (!currentData.length) return;
-    const rows = getRankingViewRows();
-    updateCharts(rows);
-    updateHeatmap(rows);
+  const rerenderGeral = async () => {
+    await renderAll();
   };
 
-  btnTodos?.addEventListener('click', () => { setElementoFilter('TODOS'); setActive(btnTodos); rerenderFromRankingView(); });
-  btnTrafo?.addEventListener('click', () => { setElementoFilter('TRAFO'); setActive(btnTrafo); rerenderFromRankingView(); });
-  btnFusivel?.addEventListener('click', () => { setElementoFilter('FUSIVEL'); setActive(btnFusivel); rerenderFromRankingView(); });
-  btnOutros?.addEventListener('click', () => { setElementoFilter('RELIGADOR'); setActive(btnOutros); rerenderFromRankingView(); });
+  btnTodos?.addEventListener('click', async () => {
+    rankingMode = 'REITERADAS';
+    setElementoFilter('TODOS');
+    setActive(btnTodos);
+    await rerenderGeral();
+  });
 
+  btnTrafo?.addEventListener('click', async () => {
+    rankingMode = 'REITERADAS';
+    setElementoFilter('TRAFO');
+    setActive(btnTrafo);
+    await rerenderGeral();
+  });
+
+  btnFusivel?.addEventListener('click', async () => {
+    rankingMode = 'REITERADAS';
+    setElementoFilter('FUSIVEL');
+    setActive(btnFusivel);
+    await rerenderGeral();
+  });
+
+  btnOutros?.addEventListener('click', async () => {
+    rankingMode = 'REITERADAS';
+    setElementoFilter('RELIGADOR');
+    setActive(btnOutros);
+    await rerenderGeral();
+  });
+
+  btnClientes?.addEventListener('click', async () => {
+    rankingMode = 'CLIENTES';
+    setActive(btnClientes);
+    await rerenderGeral();
+  });
+
+  // default
+  rankingMode = 'REITERADAS';
   setElementoFilter('TODOS');
   setActive(btnTodos);
 
-  // busca
+  // busca (funciona para ambos os modos)
   const searchElemento = document.getElementById('searchElemento');
   const btnClearSearch = document.getElementById('btnClearSearchElemento');
   let searchDebounce = null;
@@ -551,21 +705,35 @@ function initEventListeners() {
   searchElemento?.addEventListener('input', (e) => {
     clearTimeout(searchDebounce);
     const value = e.target.value;
-    searchDebounce = setTimeout(() => {
-      setElementoSearch(value);
-      rerenderFromRankingView();
+
+    searchDebounce = setTimeout(async () => {
+      if (rankingMode === 'CLIENTES') {
+        clientesSearch = value;
+        await rerenderGeral();
+      } else {
+        setElementoSearch(value);
+        await rerenderGeral();
+      }
     }, 180);
   });
 
-  btnClearSearch?.addEventListener('click', () => {
+  btnClearSearch?.addEventListener('click', async () => {
     if (searchElemento) searchElemento.value = '';
-    setElementoSearch('');
-    rerenderFromRankingView();
-    searchElemento?.focus();
+
+    if (rankingMode === 'CLIENTES') {
+      clientesSearch = '';
+      await rerenderGeral();
+    } else {
+      setElementoSearch('');
+      await rerenderGeral();
+      searchElemento?.focus();
+    }
   });
 
-  // Clique no gráfico de alimentador filtra heatmap
+  // Clique no gráfico de alimentador filtra heatmap (somente reiteradas)
   document.addEventListener('alimentador:selected', (e) => {
+    if (rankingMode !== 'REITERADAS') return;
+
     const detail = e?.detail || {};
     const nome = detail.nome || '—';
     const qtd = Number(detail.qtd || 0);
@@ -632,13 +800,19 @@ async function init() {
 
     updateAlimentadoresBadge();
 
-    // se já tiver data, aplica
+    // se já tiver data, aplica (ou se estiver em clientes, renderiza)
     const di = document.getElementById('dataInicial')?.value || '';
     const df = document.getElementById('dataFinal')?.value || '';
+
+    if (rankingMode === 'CLIENTES') {
+      await renderAll();
+      return;
+    }
+
     if (di || df) {
       await applyFiltersDebounced();
     } else if (currentData.length) {
-      renderAll();
+      await renderAll();
     }
   });
 
@@ -646,9 +820,12 @@ async function init() {
   document.getElementById('btnRegionalAtlantico')?.addEventListener('click', () => {
     setRegionalUI('ATLANTICO');
     setMapRegional('ATLANTICO');
+
     currentData = [];
+    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
+
     renderEmptyState();
     showToast('Regional selecionada: ATLANTICO. Selecione alimentadores e depois o período.', 'success');
     alimModal.open();
@@ -657,9 +834,12 @@ async function init() {
   document.getElementById('btnRegionalNorte')?.addEventListener('click', () => {
     setRegionalUI('NORTE');
     setMapRegional('NORTE');
+
     currentData = [];
+    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
+
     renderEmptyState();
     showToast('Regional selecionada: NORTE. Selecione alimentadores e depois o período.', 'success');
     alimModal.open();
@@ -668,9 +848,12 @@ async function init() {
   document.getElementById('btnRegionalCentroNorte')?.addEventListener('click', () => {
     setRegionalUI('CENTRO NORTE');
     setMapRegional('CENTRO NORTE');
+
     currentData = [];
+    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
+
     renderEmptyState();
     showToast('Regional selecionada: CENTRO NORTE. Selecione alimentadores e depois o período.', 'success');
     alimModal.open();
@@ -682,6 +865,7 @@ async function init() {
     setMapRegional('TODOS');
 
     currentData = [];
+    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set(); // sem filtro
 

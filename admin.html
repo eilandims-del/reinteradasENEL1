@@ -74,8 +74,11 @@
           </button>
         </div>
 
+        <!-- =========================
+             REITERADAS (GERAL)
+        ========================== -->
         <div class="upload-info" style="margin-top:12px;">
-          <p><strong>Estrutura obrigatória:</strong></p>
+          <p><strong>Reiteradas – Estrutura obrigatória:</strong></p>
           <ul>
             <li>INCIDENCIA</li>
             <li>CAUSA</li>
@@ -87,10 +90,9 @@
           </ul>
         </div>
 
-        <!-- Upload Geral -->
         <div class="card" style="margin-top:14px;">
           <h3 style="margin:0 0 10px 0;">
-            <i class="fas fa-database"></i> Upload Geral (3 Regionais)
+            <i class="fas fa-database"></i> Upload Reiteradas (Geral via ÁREA)
           </h3>
 
           <input type="file" id="fileInput_geral" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;" />
@@ -112,10 +114,57 @@
 
           <div style="margin-top:12px;">
             <h4 style="margin:0 0 8px 0;">
-              <i class="fas fa-history"></i> Histórico (Geral)
+              <i class="fas fa-history"></i> Histórico (Reiteradas)
             </h4>
 
             <div id="uploadHistory_geral" class="history-list">
+              <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i> Carregando...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- =========================
+             CLIENTES AFETADOS (NOVO)
+        ========================== -->
+        <div class="upload-info" style="margin-top:18px;">
+          <p><strong>Clientes Afetados – Estrutura obrigatória:</strong></p>
+          <ul>
+            <li><strong>CLI. AFE</strong> (ou: CLI AFE / CLI. AFET)</li>
+            <li><em>Opcional:</em> ÁREA/REGIONAL (se vier, mapeia para ATLÂNTICO / NORTE / CENTRO NORTE; se não vier, salva como GERAL)</li>
+            <li>Demais colunas são aceitas e serão salvas junto</li>
+          </ul>
+        </div>
+
+        <div class="card" style="margin-top:14px;">
+          <h3 style="margin:0 0 10px 0;">
+            <i class="fas fa-users"></i> Upload Clientes Afetados
+          </h3>
+
+          <input type="file" id="fileInput_clientes" accept=".csv,.xls,.xlsx,.xlsb" style="display:none;" />
+
+          <div id="dropZone_clientes" class="drop-zone">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>Arraste aqui ou clique para selecionar</p>
+            <p class="upload-hint">Planilha separada para <b>Clientes Afetados</b></p>
+          </div>
+
+          <div id="uploadProgress_clientes" class="upload-progress" style="display:none;">
+            <div class="progress-bar">
+              <div id="progressFill_clientes" class="progress-fill"></div>
+            </div>
+            <p id="progressText_clientes">Processando...</p>
+          </div>
+
+          <div id="uploadResult_clientes" class="upload-result" style="display:none;"></div>
+
+          <div style="margin-top:12px;">
+            <h4 style="margin:0 0 8px 0;">
+              <i class="fas fa-history"></i> Histórico (Clientes)
+            </h4>
+
+            <div id="uploadHistory_clientes" class="history-list">
               <div class="loading-spinner">
                 <i class="fas fa-spinner fa-spin"></i> Carregando...
               </div>

@@ -1,5 +1,13 @@
 /**
  * Script do Painel Administrativo
+ *
+ * ✅ Esta versão adiciona um SEGUNDO upload independente:
+ * - Upload Reiteradas (planilha com coluna ÁREA para distribuir 3 regionais)
+ * - Upload Clientes Afetados (planilha separada) -> salva em outra coleção
+ *
+ * Requisitos (Clientes):
+ * - Deve conter a coluna "CLI. AFE" (ou variações: CLI AFE / CLI. AFET)
+ * - Coluna ÁREA/AREA/REGIONAL é opcional (se existir, mapeia a regional; se não, salva como "GERAL")
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
@@ -8,8 +16,10 @@ import { showToast } from './utils/helpers.js';
 
 let currentUser = null;
 
-const REGIONAIS = [
-  { key: 'GERAL', uiKey: 'geral', label: 'GERAL' }
+// Mantemos o upload de reiteradas como “GERAL” (planilha única com ÁREA)
+const UPLOADS = [
+  { key: 'GERAL', uiKey: 'geral', label: 'REITERADAS (GERAL)' },
+  { key: 'CLIENTES', uiKey: 'clientes', label: 'CLIENTES AFETADOS' }
 ];
 
 function init() {
@@ -59,10 +69,10 @@ function initEventListeners() {
     await handleClearAll();
   });
 
-  // Upload (GERAL)
-  for (const r of REGIONAIS) {
-    const fileInput = document.getElementById(`fileInput_${r.uiKey}`);
-    const dropZone = document.getElementById(`dropZone_${r.uiKey}`);
+  // Uploads (Reiteradas + Clientes)
+  for (const u of UPLOADS) {
+    const fileInput = document.getElementById(`fileInput_${u.uiKey}`);
+    const dropZone = document.getElementById(`dropZone_${u.uiKey}`);
 
     if (!fileInput || !dropZone) continue;
 
@@ -83,14 +93,14 @@ function initEventListeners() {
 
       const files = e.dataTransfer.files;
       if (files && files.length > 0) {
-        await handleFileUpload(files[0], r.key, r.uiKey);
+        await routeUploadByType(files[0], u.key, u.uiKey);
       }
     });
 
     fileInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (file) {
-        await handleFileUpload(file, r.key, r.uiKey);
+        await routeUploadByType(file, u.key, u.uiKey);
       }
     });
   }
@@ -124,19 +134,22 @@ async function handleLogout() {
   }
 }
 
-/**
- * Helpers: detectar coluna ÁREA e mapear para REGIONAL
- */
-function hasAreaColumn(headers = []) {
-  return headers.some(h => String(h || '')
+/* =========================
+   Helpers: ÁREA/REGIONAL
+========================= */
+function normalizeFieldName(name) {
+  return String(name || '')
     .trim()
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\./g, '')
     .replace(/\s+/g, ' ')
-    === 'AREA'
-  );
+    .trim();
+}
+
+function hasAreaColumn(headers = []) {
+  return headers.some(h => normalizeFieldName(h) === 'AREA');
 }
 
 function normalizeAreaToRegional(areaRaw) {
@@ -149,7 +162,6 @@ function normalizeAreaToRegional(areaRaw) {
 
   if (!v) return '';
 
-  // aceita variações comuns
   if (v.includes('ATLANT')) return 'ATLANTICO';
   if (v === 'NORTE' || v.includes(' NORTE')) return 'NORTE';
   if (v.includes('CENTRO') && v.includes('NORTE')) return 'CENTRO NORTE';
@@ -157,10 +169,64 @@ function normalizeAreaToRegional(areaRaw) {
   return '';
 }
 
-/**
- * Upload Geral (planilha única) -> lê ÁREA (coluna E) -> salva cada linha com REGIONAL correto
- */
-async function handleFileUpload(file, regionalKey, uiKey) {
+function pickRegionalFromRow(row) {
+  if (!row || typeof row !== 'object') return '';
+
+  const direct =
+    row['ÁREA'] ?? row['AREA'] ?? row.AREA ?? row.area ??
+    row['REGIONAL'] ?? row.REGIONAL ?? row.regional;
+
+  const reg = normalizeAreaToRegional(direct);
+  if (reg) return reg;
+
+  // fallback: procura chaves equivalentes
+  const keys = Object.keys(row);
+  const kArea = keys.find(k => normalizeFieldName(k) === 'AREA');
+  if (kArea != null) {
+    const r2 = normalizeAreaToRegional(row[kArea]);
+    if (r2) return r2;
+  }
+
+  const kReg = keys.find(k => normalizeFieldName(k) === 'REGIONAL');
+  if (kReg != null) {
+    const r3 = normalizeAreaToRegional(row[kReg]);
+    if (r3) return r3;
+  }
+
+  return '';
+}
+
+function hasClientesColumn(headers = []) {
+  const norm = (h) => normalizeFieldName(h).replace(/\s+/g, '');
+  // CLI. AFE / CLI AFE / CLI. AFET
+  return headers.some(h => {
+    const v = norm(h);
+    return v === 'CLIAFE' || v === 'CLIAFET';
+  });
+}
+
+function getCliAfeValue(row) {
+  if (!row || typeof row !== 'object') return '';
+  return (
+    row['CLI. AFE'] ?? row['CLI AFE'] ?? row['CLI. AFET'] ??
+    row['CLIAFE'] ?? row['CLIAFET'] ??
+    ''
+  );
+}
+
+/* =========================
+   Roteamento de upload
+========================= */
+async function routeUploadByType(file, key, uiKey) {
+  if (key === 'CLIENTES') return handleClientesUpload(file, uiKey);
+  // padrão: reiteradas (GERAL)
+  return handleReiteradasUpload(file, key, uiKey);
+}
+
+/* =========================
+   Upload REITERADAS (GERAL)
+========================= */
+async function handleReiteradasUpload(file, regionalKey, uiKey) {
   const uploadProgress = document.getElementById(`uploadProgress_${uiKey}`);
   const progressFill = document.getElementById(`progressFill_${uiKey}`);
   const progressText = document.getElementById(`progressText_${uiKey}`);
@@ -176,7 +242,6 @@ async function handleFileUpload(file, regionalKey, uiKey) {
     return;
   }
 
-  // UI reset
   uploadProgress.style.display = 'block';
   uploadResult.style.display = 'none';
   uploadResult.innerHTML = '';
@@ -190,7 +255,6 @@ async function handleFileUpload(file, regionalKey, uiKey) {
 
     const parsed = await parseFile(file);
 
-    // ✅ precisa existir coluna ÁREA (AREA após normalização)
     const hasAREA = hasAreaColumn(parsed.headers || []);
     if (!hasAREA) {
       throw new Error('Coluna "ÁREA" não encontrada (esperado: coluna E).');
@@ -199,21 +263,18 @@ async function handleFileUpload(file, regionalKey, uiKey) {
     progressFill.style.width = '40%';
     progressText.textContent = 'Distribuindo por regional (via ÁREA)...';
 
-    // ✅ injeta REGIONAL por linha, a partir de AREA/ÁREA
     const enriched = (parsed.data || []).map(row => {
       const areaVal = row?.AREA ?? row?.['ÁREA'] ?? row?.area ?? row?.Area ?? '';
       const reg = normalizeAreaToRegional(areaVal);
 
       return {
         ...row,
-        // importante: salvar nos dois campos (alguns lugares usam ambos)
         REGIONAL: reg,
         regional: reg,
         AREA: areaVal
       };
     });
 
-    // valida se veio pelo menos 1 linha com REGIONAL mapeado
     const okCount = enriched.filter(r => !!r.REGIONAL).length;
     if (okCount === 0) {
       throw new Error('Nenhuma linha foi mapeada pela coluna "ÁREA". Verifique valores: ATLÂNTICO / NORTE / CENTRO NORTE.');
@@ -226,7 +287,7 @@ async function handleFileUpload(file, regionalKey, uiKey) {
 
     const metadata = {
       uploadId,
-      // histórico fica como "MISTO", porque o arquivo contém 3 regionais
+      dataset: 'REITERADAS',
       regional: 'MISTO',
       REGIONAL: 'MISTO',
       fileName: file.name,
@@ -264,16 +325,15 @@ async function handleFileUpload(file, regionalKey, uiKey) {
       uploadResult.className = 'upload-result success';
       uploadResult.innerHTML = `
         <strong>✓ Upload realizado com sucesso!</strong><br>
-        Modo: Geral (3 Regionais via ÁREA)<br>
+        Tipo: Reiteradas (Geral via ÁREA)<br>
         Arquivo: ${file.name}<br>
         Registros processados: ${saveResult.count}<br>
         Colunas: ${parsed.headers.length}
       `;
       uploadResult.style.display = 'block';
 
-      showToast(`Upload concluído (GERAL): ${saveResult.count} registro(s).`, 'success');
+      showToast(`Upload concluído (REITERADAS): ${saveResult.count} registro(s).`, 'success');
 
-      // limpar input
       const input = document.getElementById(`fileInput_${uiKey}`);
       if (input) input.value = '';
 
@@ -286,29 +346,158 @@ async function handleFileUpload(file, regionalKey, uiKey) {
     }
 
   } catch (error) {
-    console.error('[ADMIN] Erro no upload:', error);
+    console.error('[ADMIN] Erro no upload (REITERADAS):', error);
 
     uploadResult.className = 'upload-result error';
     uploadResult.innerHTML = `<strong>✗ Erro no upload:</strong><br>${error.message}`;
     uploadResult.style.display = 'block';
     uploadProgress.style.display = 'none';
 
-    showToast(`Erro (GERAL): ${error.message}`, 'error');
+    showToast(`Erro (REITERADAS): ${error.message}`, 'error');
   }
 }
 
-/**
- * Histórico
- */
-async function loadUploadHistory(regionalKey, uiKey) {
+/* =========================
+   Upload CLIENTES AFETADOS
+========================= */
+async function handleClientesUpload(file, uiKey) {
+  const uploadProgress = document.getElementById(`uploadProgress_${uiKey}`);
+  const progressFill = document.getElementById(`progressFill_${uiKey}`);
+  const progressText = document.getElementById(`progressText_${uiKey}`);
+  const uploadResult = document.getElementById(`uploadResult_${uiKey}`);
+
+  if (!currentUser) {
+    showToast('Você precisa estar logado para fazer upload.', 'error');
+    return;
+  }
+
+  if (!uploadProgress || !progressFill || !progressText || !uploadResult) {
+    showToast(`UI do upload (CLIENTES) não encontrada no admin.html.`, 'error');
+    return;
+  }
+
+  uploadProgress.style.display = 'block';
+  uploadResult.style.display = 'none';
+  uploadResult.innerHTML = '';
+  progressFill.style.width = '10%';
+  progressText.textContent = 'Lendo arquivo...';
+  progressText.style.color = '';
+
+  try {
+    progressFill.style.width = '25%';
+    progressText.textContent = 'Processando arquivo...';
+
+    const parsed = await parseFile(file);
+
+    const hasCLI = hasClientesColumn(parsed.headers || []);
+    if (!hasCLI) {
+      throw new Error('Coluna "CLI. AFE" não encontrada. (aceito: CLI. AFE / CLI AFE / CLI. AFET)');
+    }
+
+    progressFill.style.width = '40%';
+    progressText.textContent = 'Validando clientes...';
+
+    const rows = Array.isArray(parsed.data) ? parsed.data : [];
+
+    const cleaned = rows
+      .map(r => {
+        const cli = String(getCliAfeValue(r) ?? '').trim();
+        const reg = pickRegionalFromRow(r) || 'GERAL';
+        return { ...r, 'CLI. AFE': cli, REGIONAL: reg, regional: reg };
+      })
+      .filter(r => String(r['CLI. AFE'] || '').trim().length > 0);
+
+    if (!cleaned.length) {
+      throw new Error('Nenhuma linha válida com "CLI. AFE".');
+    }
+
+    progressFill.style.width = '55%';
+    progressText.textContent = `Preparando upload... (${cleaned.length} linha(s))`;
+
+    const uploadId = DataService.generateUploadId();
+
+    const metadata = {
+      uploadId,
+      dataset: 'CLIENTES',
+      regional: 'GERAL',
+      REGIONAL: 'GERAL',
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type || 'unknown',
+      totalColumns: parsed.headers.length,
+      columns: parsed.headers,
+      uploadedAt: new Date().toISOString()
+    };
+
+    progressFill.style.width = '70%';
+    progressText.textContent = 'Salvando no banco (CLIENTES)...';
+
+    const updateProgress = (progressInfo) => {
+      const progress = progressInfo.progress ?? 0;
+      progressFill.style.width = `${70 + (progress * 0.3)}%`;
+
+      if (progressInfo.retrying) {
+        progressText.textContent = `Retry (${progressInfo.retryCount})... ${progressInfo.nextRetryIn}s`;
+        progressText.style.color = 'var(--warning)';
+      } else {
+        progressText.textContent =
+          `Batch ${progressInfo.batch}/${progressInfo.totalBatches}... ` +
+          `(${progressInfo.saved}/${progressInfo.total} - ${progress}%)`;
+        progressText.style.color = '';
+      }
+    };
+
+    const saveResult = await DataService.saveClientesData(cleaned, metadata, updateProgress);
+
+    if (saveResult.success) {
+      progressFill.style.width = '100%';
+      progressText.textContent = 'Concluído! (CLIENTES)';
+
+      uploadResult.className = 'upload-result success';
+      uploadResult.innerHTML = `
+        <strong>✓ Upload de CLIENTES realizado com sucesso!</strong><br>
+        Arquivo: ${file.name}<br>
+        Registros processados: ${saveResult.count}<br>
+        Colunas: ${parsed.headers.length}
+      `;
+      uploadResult.style.display = 'block';
+
+      showToast(`Upload concluído (CLIENTES): ${saveResult.count} registro(s).`, 'success');
+
+      const input = document.getElementById(`fileInput_${uiKey}`);
+      if (input) input.value = '';
+
+      setTimeout(() => {
+        loadUploadHistory('CLIENTES', uiKey);
+        uploadProgress.style.display = 'none';
+      }, 1200);
+    } else {
+      throw new Error(saveResult.error || 'Erro ao salvar dados');
+    }
+
+  } catch (error) {
+    console.error('[ADMIN] Erro no upload (CLIENTES):', error);
+
+    uploadResult.className = 'upload-result error';
+    uploadResult.innerHTML = `<strong>✗ Erro no upload:</strong><br>${error.message}`;
+    uploadResult.style.display = 'block';
+    uploadProgress.style.display = 'none';
+
+    showToast(`Erro (CLIENTES): ${error.message}`, 'error');
+  }
+}
+
+/* =========================
+   Histórico
+========================= */
+async function loadUploadHistory(key, uiKey) {
   const historyContainer = document.getElementById(`uploadHistory_${uiKey}`);
   if (!historyContainer) return;
 
   historyContainer.innerHTML =
     '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Carregando histórico...</div>';
 
-  // ✅ Como "GERAL" não é uma regional real, normalizeRegional() retorna vazio e o service traz "tudo"
-  const result = await DataService.getUploadHistory(regionalKey);
+  const result = await DataService.getUploadHistory(key);
 
   if (result.success && result.history.length > 0) {
     historyContainer.innerHTML = '';
@@ -324,11 +513,16 @@ async function loadUploadHistory(regionalKey, uiKey) {
 
       const fileName = item.fileName || 'Arquivo sem nome';
       const uploadId = item.id;
+      const ds = String(item.dataset || '').toUpperCase() || (key === 'CLIENTES' ? 'CLIENTES' : 'REITERADAS');
+
+      const dsLabel = ds === 'CLIENTES'
+        ? 'Clientes Afetados'
+        : 'Reiteradas (Geral via ÁREA)';
 
       historyItem.innerHTML = `
         <div class="history-info">
           <h3>${fileName}</h3>
-          <p>Modo: Geral (ÁREA → 3 regionais)</p>
+          <p>Tipo: ${dsLabel}</p>
           <p>Upload em: ${date}</p>
           <p>Por: ${item.uploadedBy || 'Desconhecido'}</p>
         </div>
@@ -345,7 +539,7 @@ async function loadUploadHistory(regionalKey, uiKey) {
       historyItem.querySelector('.btn-delete-upload')?.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        handleDeleteUpload(uploadId, fileName, regionalKey, uiKey);
+        handleDeleteUpload(uploadId, fileName, key, uiKey);
       });
     });
 
@@ -356,15 +550,15 @@ async function loadUploadHistory(regionalKey, uiKey) {
 }
 
 function loadAllHistories() {
-  for (const r of REGIONAIS) {
-    loadUploadHistory(r.key, r.uiKey);
+  for (const u of UPLOADS) {
+    loadUploadHistory(u.key, u.uiKey);
   }
 }
 
-/**
- * Excluir upload
- */
-async function handleDeleteUpload(uploadId, fileName, regionalKey, uiKey) {
+/* =========================
+   Excluir upload
+========================= */
+async function handleDeleteUpload(uploadId, fileName, key, uiKey) {
   const confirmMessage =
     `Tem certeza que deseja excluir a planilha "${fileName}"?\n\n` +
     `⚠️ Esta ação não pode ser desfeita.\n\nDeseja continuar?`;
@@ -395,12 +589,12 @@ async function handleDeleteUpload(uploadId, fileName, regionalKey, uiKey) {
         : `✅ Referência removida. (Nenhum registro encontrado)`;
 
       showToast(msg, 'success');
-      setTimeout(() => loadUploadHistory(regionalKey, uiKey), 1000);
+      setTimeout(() => loadUploadHistory(key, uiKey), 1000);
     } else {
       showToast(`Erro ao excluir: ${result.error || 'Erro desconhecido'}`, 'error');
       setTimeout(() => {
         historyContainer.innerHTML = originalContent;
-        loadUploadHistory(regionalKey, uiKey);
+        loadUploadHistory(key, uiKey);
       }, 1200);
     }
   } catch (error) {
@@ -409,14 +603,14 @@ async function handleDeleteUpload(uploadId, fileName, regionalKey, uiKey) {
 
     setTimeout(() => {
       historyContainer.innerHTML = originalContent;
-      loadUploadHistory(regionalKey, uiKey);
+      loadUploadHistory(key, uiKey);
     }, 1200);
   }
 }
 
-/**
- * Limpeza completa
- */
+/* =========================
+   Limpeza completa
+========================= */
 async function handleClearAll() {
   const firstConfirm = confirm(
     '⚠️ ATENÇÃO: LIMPEZA COMPLETA DO BANCO DE DADOS\n\n' +
