@@ -402,21 +402,35 @@ export async function parseExcel(file, options = {}) {
                     reject(new Error(validation.error));
                     return;
                 }
-
                 // Processar linhas
                 const data = [];
                 const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
 
-                for (let i = 1; i < jsonData.length; i++) {
-                const row = jsonData[i];
-                const normalizedRow = normalizeRow(row, originalHeaders);
-
-                if (dataset === 'CLIENTES') {
-                  // mínimo: ter NUM_CLIENTE e INCIDENCIA
-                  if (normalizedRow.NUM_CLIENTE && normalizedRow.INCIDENCIA) data.push(normalizedRow);
-                } else {
-                  if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
+                function isRowEmpty(obj) {
+                  if (!obj || typeof obj !== 'object') return true;
+                  return !Object.values(obj).some(v => {
+                    if (v === null || v === undefined) return false;
+                    return String(v).trim() !== '';
+                  });
                 }
+
+                for (let i = 1; i < jsonData.length; i++) {
+                  const row = jsonData[i]; // ✅ row existe só aqui dentro
+                  const normalizedRow = normalizeRow(row, originalHeaders);
+
+                  // ✅ descarta linhas totalmente vazias
+                  if (isRowEmpty(normalizedRow)) continue;
+
+                  if (dataset === 'CLIENTES') {
+                    // ✅ regra mínima: precisa ter INCIDENCIA e NUM_CLIENTE (ou pelo menos uma das colunas chave)
+                    if (normalizedRow.INCIDENCIA && (normalizedRow.NUM_CLIENTE || normalizedRow['Nº CLIENTE'])) {
+                      data.push(normalizedRow);
+                    }
+                  } else {
+                    if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) {
+                      data.push(normalizedRow);
+                    }
+                  }
                 }
 
                 resolve({
