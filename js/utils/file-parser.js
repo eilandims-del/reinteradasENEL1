@@ -170,7 +170,12 @@ function normalizeRow(row, headers) {
 
   return normalized;
 }
-
+function isRowEmpty(row) {
+  return !Object.values(row).some(v => {
+    if (v === null || v === undefined) return false;
+    return String(v).trim() !== "";
+  });
+}
 /**
  * Converter data para formato padrão ISO (YYYY-MM-DD)
  * IMPORTANTE: Esta função NUNCA usa new Date() com strings YYYY-MM-DD
@@ -442,4 +447,9 @@ export async function parseFile(file, options = {}) {
   } else {
     throw new Error('Formato de arquivo não suportado');
   }
+}
+const normalizedRow = normalizeRow(row, headers);
+
+if (!isRowEmpty(normalizedRow)) {
+  data.push(normalizedRow);
 }
