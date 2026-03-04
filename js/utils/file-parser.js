@@ -367,93 +367,106 @@ export async function parseCSV(file, options = {}) {
 /**
  * Processar arquivo Excel (XLS, XLSX, XLSB)
  */
+/**
+ * Processar arquivo Excel (XLS, XLSX, XLSB)
+ */
 export async function parseExcel(file, options = {}) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
 
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const arrayBuffer = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
 
-        reader.onload = (e) => {
-            try {
-                const arrayBuffer = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+        // Pegar primeira planilha
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
 
-                // Pegar primeira planilha
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
+        // Converter para matriz (header: 1)
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          raw: true,
+          defval: null
+        });
 
-                // Converter para JSON
-                // raw: true para capturar números (datas serial do Excel)
-                // Depois converteremos usando parseDate
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null });
+        if (jsonData.length < 2) {
+          reject(new Error('Planilha muito pequena ou vazia'));
+          return;
+        }
 
-                if (jsonData.length < 2) {
-                    reject(new Error('Planilha muito pequena ou vazia'));
-                    return;
-                }
+        // ✅ Remove linhas totalmente vazias no FINAL (excel costuma “alongar” a planilha)
+        while (jsonData.length > 0) {
+          const last = jsonData[jsonData.length - 1];
+          const lastIsEmpty =
+            Array.isArray(last) &&
+            last.every((c) => c === null || c === undefined || String(c).trim() === '');
+          if (!lastIsEmpty) break;
+          jsonData.pop();
+        }
 
-                // Headers (primeira linha)
-                const originalHeaders = jsonData[0].map(h => String(h || '').trim());
-                const headers = originalHeaders.map(h => normalizeColumnName(h));
+        if (jsonData.length < 2) {
+          reject(new Error('Planilha sem dados (apenas cabeçalho ou linhas vazias).'));
+          return;
+        }
 
-                // Validar estrutura
-                const validation = validateStructure(headers, options);
-                if (!validation.valid) {
-                    reject(new Error(validation.error));
-                    return;
-                }
-                // Processar linhas
-                const data = [];
-                const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
+        // Headers (primeira linha)
+        const originalHeaders = jsonData[0].map(h => String(h || '').trim());
+        const headers = originalHeaders.map(h => normalizeColumnName(h));
 
-                function isRowEmpty(obj) {
-                  if (!obj || typeof obj !== 'object') return true;
-                  return !Object.values(obj).some(v => {
-                    if (v === null || v === undefined) return false;
-                    return String(v).trim() !== '';
-                  });
-                }
+        // Validar estrutura
+        const validation = validateStructure(headers, options);
+        if (!validation.valid) {
+          reject(new Error(validation.error));
+          return;
+        }
 
-                for (let i = 1; i < jsonData.length; i++) {
-                  const row = jsonData[i]; // ✅ row existe só aqui dentro
-                  const normalizedRow = normalizeRow(row, originalHeaders);
+        const data = [];
+        const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
 
-                  // ✅ descarta linhas totalmente vazias
-                  if (isRowEmpty(normalizedRow)) continue;
+        for (let i = 1; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          const normalizedRow = normalizeRow(row, originalHeaders);
 
-                  if (dataset === 'CLIENTES') {
-                    // ✅ regra mínima: precisa ter INCIDENCIA e NUM_CLIENTE (ou pelo menos uma das colunas chave)
-                    if (normalizedRow.INCIDENCIA && (normalizedRow.NUM_CLIENTE || normalizedRow['Nº CLIENTE'])) {
-                      data.push(normalizedRow);
-                    }
-                  } else {
-                    if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) {
-                      data.push(normalizedRow);
-                    }
-                  }
-                }
+          // ✅ descarta linhas totalmente vazias
+          if (isRowEmpty(normalizedRow)) continue;
 
-                if (data.length > MAX_UPLOAD_ROWS) {
-                  reject(new Error(
-                    `Planilha muito grande (${data.length} linhas). 
-                Limite máximo permitido: ${MAX_UPLOAD_ROWS}. 
-                Verifique se a planilha não possui milhares de linhas vazias.`
-                  ));
-                  return;
-                }
-
-                resolve({
-                    data,
-                    headers: originalHeaders,
-                    totalRows: data.length
-                });
-            } catch (error) {
-                reject(error);
+          if (dataset === 'CLIENTES') {
+            // ✅ regra mínima: INCIDENCIA + NUM_CLIENTE
+            if (normalizedRow.INCIDENCIA && normalizedRow.NUM_CLIENTE) {
+              data.push(normalizedRow);
             }
-        };
+          } else {
+            if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) {
+              data.push(normalizedRow);
+            }
+          }
 
-        reader.onerror = () => reject(new Error('Erro ao ler arquivo Excel'));
-        reader.readAsArrayBuffer(file);
-    });
+          // ✅ trava cedo (evita processar 75k à toa)
+          if (data.length > MAX_UPLOAD_ROWS) {
+            reject(new Error(
+              `Planilha muito grande (${data.length} linhas válidas). ` +
+              `Limite máximo permitido: ${MAX_UPLOAD_ROWS}. ` +
+              `Dica: verifique se há milhares de linhas vazias no final ou exporte por período.`
+            ));
+            return;
+          }
+        }
+
+        resolve({
+          data,
+          headers: originalHeaders,
+          totalRows: data.length
+        });
+
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Erro ao ler arquivo Excel'));
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 /**
