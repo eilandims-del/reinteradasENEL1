@@ -125,33 +125,51 @@ function validateStructure(headers, options = {}) {
   return { valid: true };
 }
   
+function truncateText(value, max = 5000) {
+  if (value === null || value === undefined) return '';
+  const s = String(value).trim();
+  return s.length > max ? s.slice(0, max) : s;
+}
 
 /**
  * Normalizar dados da linha
  */
 function normalizeRow(row, headers) {
-    const normalized = {};
-    
-    headers.forEach((header, index) => {
-        const normalizedHeader = normalizeColumnName(header);
-        let value = row[index];
-        // Tratamento especial para DATA
-        if (normalizedHeader === 'DATA' || normalizedHeader === 'DATA AVISO') {
-          value = parseDate(value);
-        } else if (value !== null && value !== undefined) {
-            value = String(value).trim();
-        } else {
-            value = '';
-        }
-        
-        normalized[normalizedHeader] = value;
-    });
-  // ✅ compatibilidade: se vier ELEMENTOS, copia para ELEMENTO
+  const normalized = {};
+
+  headers.forEach((header, index) => {
+    const normalizedHeader = normalizeColumnName(header);
+    let value = row[index];
+
+    // datas
+    if (normalizedHeader === 'DATA' || normalizedHeader === 'DATA AVISO') {
+      value = parseDate(value);
+    } else {
+      // texto
+      if (normalizedHeader === 'OBSERVACAO CC') {
+        // "Observação CC" vira "OBSERVACAO CC" pela sua normalização (remove acento)
+        value = truncateText(value, 5000);
+      } else if (value !== null && value !== undefined) {
+        value = String(value).trim();
+      } else {
+        value = '';
+      }
+    }
+
+    normalized[normalizedHeader] = value;
+  });
+
+  // compatibilidade
   if (!normalized.ELEMENTO && normalized.ELEMENTOS) {
     normalized.ELEMENTO = normalized.ELEMENTOS;
   }
-  
-    return normalized;
+  if (normalizedHeader === 'OBSERVACAO CC') {
+    const original = value;
+    const truncated = truncateText(value, 5000);
+    value = truncated;
+    normalized['OBS_CC_TRUNCADO'] = String(original ?? '').trim().length > 5000;
+  }
+  return normalized;
 }
 
 /**
