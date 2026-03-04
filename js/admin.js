@@ -13,6 +13,7 @@
 import { AuthService, DataService } from './services/firebase-service.js';
 import { parseFile } from './utils/file-parser.js?v=20260304-1';
 import { showToast } from './utils/helpers.js';
+import { municipioToRegional } from './utils/regional-municipio.js';
 
 let currentUser = null;
 
@@ -167,6 +168,69 @@ function normalizeAreaToRegional(areaRaw) {
   if (v.includes('CENTRO') && v.includes('NORTE')) return 'CENTRO NORTE';
 
   return '';
+}
+
+function normTxt(s) {
+  return String(s || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Mapeamento Município -> Regional (com prioridade CENTRO NORTE para municípios que aparecem duplicados)
+const MUNICIPIO_TO_REGIONAL = (() => {
+  const map = new Map();
+
+  const addMany = (regional, list) => {
+    for (const m of list) map.set(normTxt(m), regional);
+  };
+
+  // ATLÂNTICO
+  addMany('ATLANTICO', [
+    'ITAREMA','JIJOCA DE JERICOACOARA','J DE JERICOACOARA','MARCO','CAMOCIM','CRUZ','BELA CRUZ','MORRINHOS','ACARAU',
+    'ITAPIPOCA','AMONTADA','URUBURETAMA','TURURU',
+    'PARAIPABA','PARACURU','TRAIRI',
+    'TEJUSSUOCA','PENTECOSTE','APUIARES','IRAUCUBA','UMIRIM','ITAPAJE','SAO LUIS DO CURU','S LUIS DO CURU','SAO GONCALO DO AMARANTE'
+  ]);
+
+  // NORTE
+  addMany('NORTE', [
+    'BARROQUINHA','CHAVAL','CAMOCIM','GRANJA','MARTINOPOLE','URUOCA','SENADOR SA','MORAUJO',
+    'MASSAPE','MERUOCA','ALCANTARAS','COREAU','FRECHEIRINHA','TIANGUA','VICOSA DO CEARA','UBAJARA',
+    'IBIAPINA','SAO BENEDITO','CARNAUBAL','GUARACIABA DO NORTE','CROATA','MUCAMBO','PACUJA','GRACA',
+    'SOBRAL','FORQUILHA','GROAIRAS','CARIRE'
+  ]);
+
+  // CENTRO NORTE (vai sobrescrever se município também estiver em NORTE)
+  addMany('CENTRO NORTE', [
+    'CANINDE','CARIDADE','ITATIRA','PARAMOTI','BOA VIAGEM','MADALENA',
+    'CRATEUS','INDEPENDENCIA','NOVO ORIENTE','IPAPORANGA',
+    'NOVA RUSSAS','HIDROLANDIA','IPU','IPUEIRAS','MONSENHOR TABOSA','PORANGA','RERIUTABA','SANTA QUITERIA','STA QUITERIA',
+    'TAMBORIL','VARJOTA','PIRES FERREIRA','ARARENDA','CATUNDA',
+    'QUIXADA','QUIXERAMOBIM','BANABUIU','IBARETAMA','CHORO'
+  ]);
+
+  return map;
+})();
+
+function getRegionalFromMunicipio(municipioRaw) {
+  const m = normTxt(municipioRaw);
+  if (!m) return '';
+  return MUNICIPIO_TO_REGIONAL.get(m) || '';
+}
+
+// Escolhe regional: primeiro tenta ÁREA/REGIONAL da planilha, senão usa MUNICIPIO
+function resolveRegionalCliente(row) {
+  const direct = pickRegionalFromRow(row);
+  if (direct) return direct;
+
+  const mun = row?.MUNICIPIO ?? row?.['MUNICÍPIO'] ?? '';
+  const byMun = getRegionalFromMunicipio(mun);
+  return byMun || 'GERAL';
 }
 
 function pickRegionalFromRow(row) {
@@ -370,61 +434,105 @@ async function handleClientesUpload(file, uiKey) {
 
     const parsed = await parseFile(file, { dataset: 'CLIENTES' });
 
-    // parseFile agora já valida estrutura CLIENTES (colunas obrigatórias)
+    // 🔥 transforma CLIENTES: top 10 por regional
     const rows = Array.isArray(parsed.data) ? parsed.data : [];
+    if (!rows.length) throw new Error('Nenhuma linha válida encontrada (CLIENTES).');
 
-    const cleaned = rows.map(r => {
-      const reg = pickRegionalFromRow(r) || 'GERAL';
+    // 1) normaliza, calcula regional pelo MUNICIPIO, remove OBS CC
+    const normalized = rows.map(r => {
+      const municipio = r.MUNICIPIO || r['MUNICÍPIO'] || '';
+      const reg = municipioToRegional(municipio) || 'GERAL';
+
+      const drop = { ...r };
+      // remove campos “pesados”/indesejados
+      const DROP_FIELDS = ['OBSERVACAO CC', 'OBSERVAÇÃO CC', 'CC'];
+      for (const f of DROP_FIELDS) {
+        if (f in drop) delete drop[f];
+      }
+      // se vier como chave diferente, remove por startsWith OBSERVACAO
+      for (const k of Object.keys(drop)) {
+        const kk = String(k).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        if (kk.startsWith('OBSERVACAO')) delete drop[k];
+      }
 
       return {
-        ...r,
+        ...drop,
         REGIONAL: reg,
         regional: reg
       };
     });
 
-    // segurança extra
-    if (!cleaned.length) {
-      throw new Error('Nenhuma linha válida encontrada (CLIENTES).');
+    // 2) conta por REGIONAL + NUM_CLIENTE
+    const getNumCliente = (row) =>
+      String(row.NUM_CLIENTE || row['Nº CLIENTE'] || row['NUM CLIENTE'] || '').trim();
+
+    const counts = new Map(); // key: `${REGIONAL}||${NUM}`
+    for (const r of normalized) {
+      const num = getNumCliente(r);
+      const reg = String(r.REGIONAL || 'GERAL');
+      if (!num) continue;
+      const key = `${reg}||${num}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+
+    // 3) top 10 por regional
+    function topNByRegional(regional, n=10) {
+      const items = [];
+      for (const [k, c] of counts.entries()) {
+        const [reg, num] = k.split('||');
+        if (reg === regional) items.push({ num, count: c });
+      }
+      items.sort((a,b) => b.count - a.count);
+      return items.slice(0, n).map(x => x.num);
+    }
+
+    const topNorte = new Set(topNByRegional('NORTE', 10));
+    const topCentro = new Set(topNByRegional('CENTRO NORTE', 10));
+    const topAtlantico = new Set(topNByRegional('ATLANTICO', 10));
+
+    // 4) filtra linhas somente desses top 10
+    const filtered = normalized.filter(r => {
+      const num = getNumCliente(r);
+      const reg = String(r.REGIONAL || 'GERAL');
+      if (!num) return false;
+      if (reg === 'NORTE') return topNorte.has(num);
+      if (reg === 'CENTRO NORTE') return topCentro.has(num);
+      if (reg === 'ATLANTICO') return topAtlantico.has(num);
+      return false; // GERAL não entra na regra
+    });
+
+    if (!filtered.length) {
+      throw new Error('Após o filtro TOP 10 por regional, nenhuma linha sobrou. Verifique MUNICIPIO/NUM_CLIENTE.');
     }
 
     progressFill.style.width = '55%';
-    progressText.textContent = `Preparando upload... (${cleaned.length} linha(s))`;
+    progressText.textContent = `Preparando upload filtrado (TOP 10 por regional)... (${filtered.length} linha(s))`;
 
     const uploadId = DataService.generateUploadId();
 
     const metadata = {
       uploadId,
       dataset: 'CLIENTES',
-      regional: 'GERAL',
-      REGIONAL: 'GERAL',
+      regional: 'MISTO',
+      REGIONAL: 'MISTO',
       fileName: file.name,
       fileSize: file.size,
       fileType: file.type || 'unknown',
       totalColumns: parsed.headers.length,
       columns: parsed.headers,
-      uploadedAt: new Date().toISOString()
-    };
-
-    progressFill.style.width = '70%';
-    progressText.textContent = 'Salvando no banco (CLIENTES)...';
-
-    const updateProgress = (progressInfo) => {
-      const progress = progressInfo.progress ?? 0;
-      progressFill.style.width = `${70 + (progress * 0.3)}%`;
-
-      if (progressInfo.retrying) {
-        progressText.textContent = `Retry (${progressInfo.retryCount})... ${progressInfo.nextRetryIn}s`;
-        progressText.style.color = 'var(--warning)';
-      } else {
-        progressText.textContent =
-          `Batch ${progressInfo.batch}/${progressInfo.totalBatches}... ` +
-          `(${progressInfo.saved}/${progressInfo.total} - ${progress}%)`;
-        progressText.style.color = '';
+      uploadedAt: new Date().toISOString(),
+      // opcional: guardar top 10 pra auditoria
+      top10: {
+        NORTE: Array.from(topNorte),
+        'CENTRO NORTE': Array.from(topCentro),
+        ATLANTICO: Array.from(topAtlantico),
       }
     };
 
-    const saveResult = await DataService.saveClientesData(cleaned, metadata, updateProgress);
+    progressFill.style.width = '70%';
+    progressText.textContent = 'Salvando no banco (CLIENTES filtrado TOP 10/regional)...';
+
+    const saveResult = await DataService.saveClientesData(filtered, metadata, updateProgress);
 
     if (saveResult.success) {
       progressFill.style.width = '100%';

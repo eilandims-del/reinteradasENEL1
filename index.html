@@ -333,6 +333,62 @@ FILE: index.html
     </div>
   </div>
 
+<!-- Modal - CLIENTES (3 rankings) -->
+<div id="modalClientes" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="clientesTitulo">
+        <i class="fa-solid fa-users"></i> Clientes - Rankings
+      </h2>
+
+      <div class="modal-header-actions">
+        <button class="modal-close" id="fecharModalClientes">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div style="margin-bottom: 10px; color: var(--medium-gray); font-weight: 700;">
+        Regional: <span id="clientesRegionalLabel">—</span> •
+        Período: <span id="clientesPeriodoLabel">—</span>
+      </div>
+
+      <section class="rankings-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+        <!-- 1) Ranking TOP 10 Clientes -->
+        <section class="card ranking-card">
+          <div class="ranking-header">
+            <h2 class="section-title">
+              <i class="fa-solid fa-angle-right"></i> Top 10 Clientes
+            </h2>
+          </div>
+          <div id="rankingClientesTop10" class="ranking-list ranking-scroll"></div>
+        </section>
+
+        <!-- 2) Ranking Causa (baseado nas ocorrências do período/regional) -->
+        <section class="card ranking-card">
+          <div class="ranking-header">
+            <h2 class="section-title">
+              <i class="fa-solid fa-angle-right"></i> Ranking Causa
+            </h2>
+          </div>
+          <div id="rankingClientesCausa" class="ranking-list ranking-scroll"></div>
+        </section>
+
+        <!-- 3) Ranking Alimentador -->
+        <section class="card ranking-card">
+          <div class="ranking-header">
+            <h2 class="section-title">
+              <i class="fa-solid fa-angle-right"></i> Ranking Alimentador
+            </h2>
+          </div>
+          <div id="rankingClientesAlimentador" class="ranking-list ranking-scroll"></div>
+        </section>
+      </section>
+    </div>
+  </div>
+</div>
+
   <!-- MODAL ALIMENTADORES -->
   <div id="modalAlimentadores" class="modal">
     <div class="modal-content">

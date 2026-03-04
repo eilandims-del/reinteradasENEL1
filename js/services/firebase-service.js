@@ -69,6 +69,7 @@ export class DataService {
   static COLLECTION_NAME = "reinteradas";
   static CLIENTES_COLLECTION = "clientes_afetados";
   static UPLOADS_COLLECTION = "uploads";
+  static CLIENTES_TOP_COLLECTION = "clientes_top";
 
   static REGIONAIS = {
     ATLANTICO: "ATLANTICO",
@@ -160,7 +161,118 @@ export class DataService {
       progressCallback
     });
   }
-
+  
+  static async saveClientesTopData(topRows, metadata = {}, progressCallback = null) {
+    // salva só ~30 docs (TOP10 por regional)
+    return this._saveClientesTopGeneric({ topRows, metadata, progressCallback });
+  }
+  
+  static async _saveClientesTopGeneric({ topRows, metadata = {}, progressCallback = null }) {
+    try {
+      const uploadId = metadata.uploadId;
+      if (!uploadId) throw new Error("uploadId é obrigatório");
+      if (!Array.isArray(topRows)) throw new Error("topRows precisa ser um array");
+  
+      const BATCH_SIZE = 450; // aqui vai ser 30, então 1 batch só
+      const totalBatches = Math.ceil(topRows.length / BATCH_SIZE);
+  
+      let totalSaved = 0;
+  
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        const startIndex = batchIndex * BATCH_SIZE;
+        const endIndex = Math.min(startIndex + BATCH_SIZE, topRows.length);
+        const batchData = topRows.slice(startIndex, endIndex);
+  
+        const batch = writeBatch(db);
+  
+        batchData.forEach((item, index) => {
+          const rowIndex = startIndex + index;
+  
+          // docId estável: upload + regional + num_cliente (evita duplicar)
+          const num = String(item.NUM_CLIENTE || '').trim();
+          const reg = String(item.REGIONAL || 'GERAL').trim();
+          const docId = `${uploadId}_${reg}_${num || rowIndex}`;
+  
+          const ref = doc(db, this.CLIENTES_TOP_COLLECTION, docId);
+  
+          batch.set(ref, {
+            ...item,
+            dataset: 'CLIENTES_TOP',
+            uploadId,
+            rowIndex,
+            createdAt: serverTimestamp()
+          }, { merge: true });
+        });
+  
+        await batch.commit();
+        totalSaved += batchData.length;
+  
+        if (progressCallback) {
+          progressCallback({
+            batch: batchIndex + 1,
+            totalBatches,
+            saved: totalSaved,
+            total: topRows.length,
+            progress: Math.round((totalSaved / topRows.length) * 100),
+            retrying: false,
+            retryCount: 0,
+            nextRetryIn: 0
+          });
+        }
+      }
+  
+      // histórico do upload (continua em uploads)
+      await setDoc(
+        doc(db, this.UPLOADS_COLLECTION, uploadId),
+        {
+          ...metadata,
+          dataset: 'CLIENTES_TOP',
+          REGIONAL: "MISTO",
+          regional: "MISTO",
+          totalRecords: topRows.length,
+          uploadedAt: serverTimestamp(),
+          uploadedBy: auth.currentUser?.email || "unknown"
+        },
+        { merge: true }
+      );
+  
+      return { success: true, count: totalSaved };
+    } catch (error) {
+      console.error("[UPLOAD CLIENTES_TOP]", error);
+      return { success: false, error: error?.message || String(error) };
+    }
+  }
+  
+  // leitura dos TOPs
+  static async getClientesTopData(filters = {}) {
+    try {
+      const regional = this.normalizeRegional(filters.regional);
+  
+      const colRef = collection(db, this.CLIENTES_TOP_COLLECTION);
+  
+      if (regional === 'TODOS' || !regional) {
+        const qAll = query(colRef, orderBy("createdAt", "desc"), limit(200));
+        const snap = await getDocs(qAll);
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        return { success: true, data };
+      }
+  
+      const q1 = query(
+        colRef,
+        where("REGIONAL", "==", regional),
+        orderBy("createdAt", "desc"),
+        limit(200)
+      );
+  
+      const snap = await getDocs(q1);
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      return { success: true, data };
+  
+    } catch (error) {
+      console.error("[GET CLIENTES_TOP]", error);
+      return { success: false, error: error?.message || String(error), data: [] };
+    }
+  }
   /* =========================
      SAVE CLIENTES (NOVO)
   ========================= */

@@ -431,15 +431,14 @@ export async function parseExcel(file, options = {}) {
           // ✅ descarta linhas totalmente vazias
           if (isRowEmpty(normalizedRow)) continue;
 
-          if (dataset === 'CLIENTES') {
-            // ✅ regra mínima: INCIDENCIA + NUM_CLIENTE
-            if (normalizedRow.INCIDENCIA && normalizedRow.NUM_CLIENTE) {
-              data.push(normalizedRow);
-            }
-          } else {
-            if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) {
-              data.push(normalizedRow);
-            }
+          // ✅ trava cedo (evita processar 75k à toa)
+          if (dataset !== 'CLIENTES' && data.length > MAX_UPLOAD_ROWS) {
+            reject(new Error(
+              `Planilha muito grande (${data.length} linhas válidas). ` +
+              `Limite máximo permitido: ${MAX_UPLOAD_ROWS}. ` +
+              `Dica: verifique se há milhares de linhas vazias no final ou exporte por período.`
+            ));
+            return;
           }
 
           // ✅ trava cedo (evita processar 75k à toa)

@@ -2,27 +2,24 @@
 // FILE: js/main.js
 // =========================
 /**
- * Script Principal - Dashboard
+ * Script Principal - Dashboard (LIMPO)
  *
  * Fluxo:
  * 1) Seleciona Regional  -> abre Modal de Alimentadores (obrigatório escolher) [exceto TODOS]
  * 2) Seleciona Alimentadores (ou "TODOS") por Conjunto
  * 3) Seleciona período (data inicial/final) e clica em Aplicar
  *
- * ✅ NOVO (Ranking Geral por clique):
- * - TODOS / TRAFO / FUSÍVEL / RELIGADOR => lê REITERADAS (Firestore: reinteradas)
- * - CLIENTES => lê CLIENTES AFETADOS (Firestore: clientes_afetados)
- *
- * Observações:
- * - remove bug: função duplicada getCliAfeValue
- * - remove bug: rerenderFromRankingView inexistente
- * - busca (#searchElemento) funciona em ambos os modos:
- *   - REITERADAS: busca por ELEMENTO (via ranking.js)
- *   - CLIENTES: busca por NOME do cliente (CLI. AFE)
+ * ✅ CLIENTES:
+ * - Botão "CLIENTES" abre um MODAL separado (clientes-modal.js)
+ * - NÃO altera painel principal (ranking/charts/heatmap continuam de REITERADAS)
  */
 
-import { DataService } from './services/firebase-service.js';
-import { getAllColumns, getOcorrenciasByElemento, normKey, getFieldValue } from './services/data-service.js';
+import {
+  getAllColumns,
+  getOcorrenciasByElemento,
+  normKey,
+  getFieldValue
+} from './services/data-service.js';
 
 import { initEstruturasPanel, updateEstruturasContext } from './components/estruturas-panel.js';
 
@@ -51,13 +48,12 @@ import { copyToClipboard, showToast, debounce } from './utils/helpers.js';
 import { setupAlimentadoresCatalogModal } from './components/modal-alimentadores-catalog.js';
 import { getAllAlimentadoresForRegional } from './services/alimentadores-catalog.js';
 
+// ✅ Firebase / Clientes modal
+import { DataService } from './services/firebase-service.js';
+import { setupClientesModalUI, openClientesModal } from './components/clientes-modal.js';
+
 let currentData = [];
 let selectedAdditionalColumns = [];
-
-// ✅ Ranking geral por clique
-let rankingMode = 'REITERADAS'; // 'REITERADAS' | 'CLIENTES'
-let clientesCache = [];         // dados carregados de clientes (para copiar/filtrar)
-let clientesSearch = '';        // busca quando estiver em CLIENTES
 
 // ✅ Regional selecionada
 let selectedRegional = ''; // 'TODOS' | 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
@@ -65,46 +61,18 @@ let selectedRegional = ''; // 'TODOS' | 'ATLANTICO' | 'NORTE' | 'CENTRO NORTE'
 // ✅ Alimentadores selecionados (Set de normKey)
 let selectedAlimentadores = new Set();
 
-// ===== Helpers =====
-
-function filterClientesByPeriod(rows, di, df) {
-  const a = di ? String(di) : '';
-  const b = df ? String(df) : '';
-
-  if (!a && !b) return rows || [];
-
-  return (rows || []).filter(r => {
-    const d = String(getFieldValue(r, 'DATA AVISO') || '').trim();
-    if (!d) return false;
-
-    if (a && d < a) return false;
-    if (b && d > b) return false;
-    return true;
-  });
-}
-
-function getCatalogForRegional(regional) {
-  const r = String(regional || '').trim().toUpperCase();
-  if (!r) return [];
-
-  // ✅ TODOS = catálogo mesclado das 3 regionais
-  if (r === 'TODOS') {
-    const regs = ['ATLANTICO', 'NORTE', 'CENTRO NORTE'];
-    const all = regs.flatMap(rr => getAllAlimentadoresForRegional(rr) || []);
-    return Array.from(new Set(all));
-  }
-
-  return getAllAlimentadoresForRegional(r) || [];
-}
+/* =========================
+   Helpers: Alimentadores
+========================= */
 
 function getCatalogForSelectedRegional() {
   if (!selectedRegional) return [];
-  if (selectedRegional === 'TODOS') return []; // ✅ não existe catálogo unificado
+  if (selectedRegional === 'TODOS') return []; // não existe catálogo unificado aqui
   return getAllAlimentadoresForRegional(selectedRegional);
 }
 
 function isAllAlimentadoresSelected() {
-  // ✅ TODOS = sem filtro de alimentadores
+  // TODOS = sem filtro de alimentadores
   if (String(selectedRegional || '').toUpperCase() === 'TODOS') return true;
 
   const catalog = getCatalogForSelectedRegional();
@@ -115,7 +83,7 @@ function isAllAlimentadoresSelected() {
 function alimentadorFilterActive() {
   if (!selectedRegional) return false;
 
-  // ✅ TODOS = nunca filtra por alimentador
+  // TODOS = nunca filtra por alimentador
   if (String(selectedRegional).toUpperCase() === 'TODOS') return false;
 
   if (selectedAlimentadores.size === 0) return false;
@@ -146,25 +114,38 @@ function updateAlimentadoresBadge() {
     el.innerHTML = `<i class="fas fa-diagram-project"></i> ${txt}`;
   };
 
-  if (!selectedRegional) { setBadge('Alimentadores: —'); return; }
+  if (!selectedRegional) {
+    setBadge('Alimentadores: —');
+    return;
+  }
 
-  // ✅ TODOS: não força catálogo
+  // TODOS: não tem seleção
   if (selectedRegional === 'TODOS') {
     setBadge('Alimentadores: TODOS (todas regionais)');
     return;
   }
 
   const catalog = getCatalogForSelectedRegional();
-  if (!catalog.length) { setBadge('Alimentadores: —'); return; }
+  if (!catalog.length) {
+    setBadge('Alimentadores: —');
+    return;
+  }
 
-  if (isAllAlimentadoresSelected()) { setBadge('Alimentadores: TODOS'); return; }
-  if (selectedAlimentadores.size > 0) { setBadge(`Alimentadores: ${selectedAlimentadores.size}`); return; }
+  if (isAllAlimentadoresSelected()) {
+    setBadge('Alimentadores: TODOS');
+    return;
+  }
+
+  if (selectedAlimentadores.size > 0) {
+    setBadge(`Alimentadores: ${selectedAlimentadores.size}`);
+    return;
+  }
 
   setBadge('Alimentadores: (selecionar)');
 }
 
 function validateAlimentadoresSelection(silent = false) {
-  // ✅ TODOS não exige escolha
+  // TODOS não exige escolha
   if (String(selectedRegional).toUpperCase() === 'TODOS') return true;
 
   if (!selectedRegional) {
@@ -185,161 +166,11 @@ function validateAlimentadoresSelection(silent = false) {
 }
 
 /* =========================
-   CLIENTES (Ranking geral)
+   Render principal
 ========================= */
 
-function normalizeText(v) {
-  return String(v ?? '').trim().replace(/\s+/g, ' ');
-}
-
-function getCliAfeValue(row) {
-  return (
-    getFieldValue(row, 'CLI. AFE') ||
-    getFieldValue(row, 'CLI AFE') ||
-    getFieldValue(row, 'CLI. AFET') ||
-    getFieldValue(row, 'CLIAFE') ||
-    getFieldValue(row, 'CLIAFET') ||
-    row?.['CLI. AFE'] ||
-    row?.['CLI AFE'] ||
-    row?.['CLI. AFET'] ||
-    row?.['CLIAFE'] ||
-    row?.['CLIAFET'] ||
-    ''
-  );
-}
-
-function buildSimpleRanking(rows, getKeyFn) {
-  const map = new Map();
-  for (const r of (rows || [])) {
-    const k = normalizeText(getKeyFn(r));
-    if (!k) continue;
-    map.set(k, (map.get(k) || 0) + 1);
-  }
-  return Array.from(map.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-}
-
-function filterClientesBySearch(rows) {
-  const term = normKey(clientesSearch || '');
-  if (!term) return rows || [];
-  return (rows || []).filter(r => normKey(getCliAfeValue(r)).includes(term));
-}
-
-function renderRankingClientesNoMesmoPainel(clientRows) {
-  const container = document.getElementById('rankingElemento');
-  const totalEl = document.getElementById('rankingElementoTotal');
-
-  const filtered = filterClientesBySearch(clientRows);
-
-  if (totalEl) totalEl.textContent = `Registros: ${filtered.length}`;
-
-  if (!container) return;
-
-  if (!filtered?.length) {
-    container.innerHTML =
-      '<p style="text-align:center;padding:2rem;color:var(--medium-gray);">Nenhum dado de clientes encontrado.</p>';
-    return;
-  }
-
-  const ranking = buildSimpleRanking(filtered, (r) => getCliAfeValue(r));
-
-  if (!ranking.length) {
-    container.innerHTML =
-      '<p style="text-align:center;padding:2rem;color:var(--medium-gray);">Não encontrei valores em <b>CLI. AFE</b>.</p>';
-    return;
-  }
-
-  container.innerHTML = '';
-
-  ranking.forEach((item, idx) => {
-    const div = document.createElement('div');
-    div.className = 'ranking-item';
-
-    div.innerHTML = `
-      <span class="ranking-item-position">${idx + 1}º</span>
-      <span class="ranking-item-name">${item.name}</span>
-      <span class="ranking-item-count">(${item.count} vezes)</span>
-    `;
-
-    container.appendChild(div);
-  });
-}
-
-function buildClientesRankingText(rows) {
-  const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) return '';
-
-  const filtered = filterClientesBySearch(list);
-
-  const map = new Map();
-  for (const r of filtered) {
-    const raw = String(getCliAfeValue(r) ?? '').trim();
-    if (!raw) continue;
-    const k = raw.replace(/\s+/g, ' ');
-    map.set(k, (map.get(k) || 0) + 1);
-  }
-
-  if (map.size === 0) return '';
-
-  const arr = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
-
-  const header =
-    `📌 RANKING CLIENTES (CLI. AFE)\n` +
-    `Regional: ${selectedRegional || '—'}\n` +
-    `Busca: ${clientesSearch || '—'}\n` +
-    `Registros (visão atual): ${filtered.length}\n` +
-    `Clientes distintos: ${map.size}\n\n`;
-
-  const lines = arr.map(([cliente, qtd], idx) => `${String(idx + 1).padStart(2, '0')}. ${cliente} — ${qtd}`);
-  return header + lines.join('\n');
-}
-
-/**
- * Renderizar todos os componentes (Ranking Geral)
- */
 async function renderAll() {
   if (!selectedRegional) return;
-
-  // ✅ MODO CLIENTES: lê outra coleção/planilha
-  if (rankingMode === 'CLIENTES') {
-    const res = await DataService.getClientesData?.({ regional: selectedRegional });
-    const rows = (res?.success && Array.isArray(res.data)) ? res.data : [];
-
-    clientesCache = rows;
-
-    const di = document.getElementById('dataInicial')?.value || '';
-    const df = document.getElementById('dataFinal')?.value || '';
-    
-    const rowsFiltradas = filterClientesByPeriod(rows, di, df);
-    
-    // ✅ 3 cards baseados na planilha de CLIENTES
-    // (essas funções já existem no ranking.js)
-    try { 
-      // cliente = NUM_CLIENTE (já vem canônico do parser)
-      (await import('./components/ranking.js')).renderRankingCliente?.(rowsFiltradas);
-      (await import('./components/ranking.js')).renderRankingCausa?.(rowsFiltradas);
-    
-      // 3º card: se existir ALIMENTADOR/ALIMENT., usa alimentador
-      const hasAlim = rowsFiltradas.some(r => getFieldValue(r, 'ALIMENT.') || getFieldValue(r, 'ALIMENTADOR'));
-      if (hasAlim) {
-        (await import('./components/ranking.js')).renderRankingAlimentador?.(rowsFiltradas);
-      } else {
-        // fallback: MUNICIPIO (mais coerente com sua planilha atual)
-        (await import('./components/ranking.js')).renderRankingMunicipio?.(rowsFiltradas);
-      }
-    } catch (_) {}
-    
-    // limpar charts/heatmap/estruturas
-    try { updateCharts([]); } catch (_) {}
-    try { updateHeatmap([]); } catch (_) {}
-    try { updateEstruturasContext({ regional: selectedRegional, rows: [], catalog: [], selectedAlimentadores }); } catch (_) {}
-    
-    updateAlimentadoresBadge();
-    return;  
-  }
-
-  // ✅ MODO REITERADAS (comportamento atual)
   if (!currentData.length) return;
 
   const base = getDataWithAlimentadorFilter(currentData);
@@ -408,7 +239,7 @@ function setRegionalUI(regional) {
 }
 
 /**
- * Carregar dados do Firestore PARA UM PERÍODO + REGIONAL (REITERADAS)
+ * Carregar dados do Firestore (REITERADAS) por período + regional
  */
 async function loadDataByPeriod(di, df) {
   const rankingContainer = document.getElementById('rankingElemento');
@@ -457,7 +288,7 @@ async function loadDataByPeriod(di, df) {
 }
 
 /**
- * Aplicar filtros (com debounce) - REITERADAS
+ * Aplicar filtros (com debounce)
  */
 const applyFiltersDebounced = debounce(async () => {
   const dataInicial = document.getElementById('dataInicial')?.value;
@@ -471,13 +302,7 @@ const applyFiltersDebounced = debounce(async () => {
     return;
   }
 
-  // Se estiver em CLIENTES, não exige data: só renderiza clientes
-  if (rankingMode === 'CLIENTES') {
-    await renderAll();
-    return;
-  }
-
-  // ✅ exige escolha de alimentadores (exceto TODOS)
+  // exige escolha de alimentadores (exceto TODOS)
   if (!validateAlimentadoresSelection(false)) return;
 
   if (!di && !df) {
@@ -498,8 +323,6 @@ function clearFilters() {
   if (df) df.value = '';
 
   currentData = [];
-  clientesCache = [];
-  clientesSearch = '';
   selectedAdditionalColumns = [];
 
   setElementoSearch('');
@@ -627,61 +450,19 @@ function initEventListeners() {
   document.getElementById('aplicarFiltro')?.addEventListener('click', applyFiltersDebounced);
   document.getElementById('limparFiltro')?.addEventListener('click', clearFilters);
 
-  // Copiar ranking (geral)
+  // Copiar ranking (reiteradas)
   document.getElementById('copiarRankingElemento')?.addEventListener('click', async () => {
-    // CLIENTES => copia ranking clientes
-    if (rankingMode === 'CLIENTES') {
-      const text = buildClientesRankingText(clientesCache);
-      if (!text) {
-        showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
-        return;
-      }
-      const result = await copyToClipboard(text);
-      showToast(result.success ? 'Ranking CLIENTES copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
-      return;
-    }
-
-    // REITERADAS => comportamento atual
     const text = generateRankingText();
     const result = await copyToClipboard(text);
     showToast(result.success ? 'Ranking copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
   });
 
-  // ✅ Botão "CLIENTES" (se existir no seu HTML) => copia ranking clientes também
-  document.getElementById('copiarRankingClientes')?.addEventListener('click', async () => {
-    // se estiver em reiteradas, tenta copiar clientes do dataset de reiteradas (caso exista CLI. AFE ali)
-    if (rankingMode === 'REITERADAS') {
-      if (!currentData.length) {
-        showToast('Carregue um período antes de copiar CLIENTES.', 'error');
-        return;
-      }
-      const rows = getRankingViewRows();
-      const text = buildClientesRankingText(rows);
-      if (!text) {
-        showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
-        return;
-      }
-      const result = await copyToClipboard(text);
-      showToast(result.success ? 'Clientes copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
-      return;
-    }
-
-    // se estiver em CLIENTES, copia do dataset de clientes
-    const text = buildClientesRankingText(clientesCache);
-    if (!text) {
-      showToast('Não encontrei valores de "CLI. AFE" na visão atual.', 'error');
-      return;
-    }
-    const result = await copyToClipboard(text);
-    showToast(result.success ? 'Clientes copiado!' : 'Erro ao copiar.', result.success ? 'success' : 'error');
-  });
-
-  // Botões filtro (Ranking Geral)
+  // Botões filtro (Ranking Elemento)
   const btnTodos = document.getElementById('btnFiltroTodos');
   const btnTrafo = document.getElementById('btnFiltroTrafo');
   const btnFusivel = document.getElementById('btnFiltroFusivel');
   const btnOutros = document.getElementById('btnFiltroReligador');
-  const btnClientes = document.getElementById('btnFiltroClientes'); // ✅ seu id
+  const btnClientes = document.getElementById('btnFiltroClientes'); // abre modal clientes
 
   const setActive = (activeBtn) => {
     [btnTodos, btnTrafo, btnFusivel, btnOutros, btnClientes].forEach(b => b?.classList.remove('active'));
@@ -693,45 +474,68 @@ function initEventListeners() {
   };
 
   btnTodos?.addEventListener('click', async () => {
-    rankingMode = 'REITERADAS';
     setElementoFilter('TODOS');
     setActive(btnTodos);
     await rerenderGeral();
   });
 
   btnTrafo?.addEventListener('click', async () => {
-    rankingMode = 'REITERADAS';
     setElementoFilter('TRAFO');
     setActive(btnTrafo);
     await rerenderGeral();
   });
 
   btnFusivel?.addEventListener('click', async () => {
-    rankingMode = 'REITERADAS';
     setElementoFilter('FUSIVEL');
     setActive(btnFusivel);
     await rerenderGeral();
   });
 
   btnOutros?.addEventListener('click', async () => {
-    rankingMode = 'REITERADAS';
     setElementoFilter('RELIGADOR');
     setActive(btnOutros);
     await rerenderGeral();
   });
 
+  // CLIENTES => abre modal (não muda painel)
   btnClientes?.addEventListener('click', async () => {
-    rankingMode = 'CLIENTES';
     setActive(btnClientes);
-    await rerenderGeral();
+
+    try {
+      if (!selectedRegional) {
+        showToast('Selecione uma Regional antes de abrir CLIENTES.', 'error');
+        return;
+      }
+
+      const regionalLabel = (document.getElementById('regionalAtualLabel')?.textContent || '—').trim();
+      const dataInicial = document.getElementById('dataInicial')?.value || '';
+      const dataFinal = document.getElementById('dataFinal')?.value || '';
+
+      const regional = regionalLabel.toUpperCase();
+      const res = await DataService.getClientesData({ regional });
+
+      if (!res?.success) {
+        throw new Error(res?.error || 'Falha ao carregar clientes_afetados.');
+      }
+
+      openClientesModal({
+        rows: res.data || [],
+        regionalLabel,
+        dataInicial,
+        dataFinal
+      });
+
+    } catch (e) {
+      console.error('[CLIENTES MODAL]', e);
+      showToast(`Erro ao abrir CLIENTES: ${e.message}`, 'error');
+    }
   });
 
   // default
-  rankingMode = 'REITERADAS';
   setElementoFilter('TODOS');
   setActive(btnTodos);
 
-  // busca (funciona para ambos os modos)
+  // Busca (ranking elemento)
   const searchElemento = document.getElementById('searchElemento');
   const btnClearSearch = document.getElementById('btnClearSearchElemento');
   let searchDebounce = null;
@@ -741,33 +545,20 @@ function initEventListeners() {
     const value = e.target.value;
 
     searchDebounce = setTimeout(async () => {
-      if (rankingMode === 'CLIENTES') {
-        clientesSearch = value;
-        await rerenderGeral();
-      } else {
-        setElementoSearch(value);
-        await rerenderGeral();
-      }
+      setElementoSearch(value);
+      await rerenderGeral();
     }, 180);
   });
 
   btnClearSearch?.addEventListener('click', async () => {
     if (searchElemento) searchElemento.value = '';
-
-    if (rankingMode === 'CLIENTES') {
-      clientesSearch = '';
-      await rerenderGeral();
-    } else {
-      setElementoSearch('');
-      await rerenderGeral();
-      searchElemento?.focus();
-    }
+    setElementoSearch('');
+    await rerenderGeral();
+    searchElemento?.focus();
   });
 
-  // Clique no gráfico de alimentador filtra heatmap (somente reiteradas)
+  // Clique no gráfico de alimentador filtra heatmap (reiteradas)
   document.addEventListener('alimentador:selected', (e) => {
-    if (rankingMode !== 'REITERADAS') return;
-
     const detail = e?.detail || {};
     const nome = detail.nome || '—';
     const qtd = Number(detail.qtd || 0);
@@ -779,7 +570,7 @@ function initEventListeners() {
     try { updateHeatmap(ocorrencias); } catch (_) {}
   });
 
-  // Modal inspeção (único)
+  // Modal inspeção
   initInspecaoModal();
 }
 
@@ -797,7 +588,7 @@ async function init() {
   resetMap();
   updateHeatmap([]);
 
-  // ✅ setup do modal catálogo
+  // setup do modal catálogo
   const alimModal = setupAlimentadoresCatalogModal({
     getSelectedRegional: () => selectedRegional,
     onMissingRegional: () => showToast('Selecione uma Regional primeiro.', 'error')
@@ -812,7 +603,7 @@ async function init() {
     alimModal.open();
   });
 
-  // ✅ recebe seleção do modal
+  // recebe seleção do modal
   document.addEventListener('alimentadores:changed', async (e) => {
     const d = e?.detail || {};
     const regional = String(d.regional || selectedRegional || '').trim().toUpperCase();
@@ -834,14 +625,9 @@ async function init() {
 
     updateAlimentadoresBadge();
 
-    // se já tiver data, aplica (ou se estiver em clientes, renderiza)
+    // se já tiver data, aplica
     const di = document.getElementById('dataInicial')?.value || '';
     const df = document.getElementById('dataFinal')?.value || '';
-
-    if (rankingMode === 'CLIENTES') {
-      await renderAll();
-      return;
-    }
 
     if (di || df) {
       await applyFiltersDebounced();
@@ -856,7 +642,6 @@ async function init() {
     setMapRegional('ATLANTICO');
 
     currentData = [];
-    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
 
@@ -870,7 +655,6 @@ async function init() {
     setMapRegional('NORTE');
 
     currentData = [];
-    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
 
@@ -884,7 +668,6 @@ async function init() {
     setMapRegional('CENTRO NORTE');
 
     currentData = [];
-    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set();
 
@@ -893,13 +676,12 @@ async function init() {
     alimModal.open();
   });
 
-  // ✅ TODOS (não abre modal)
+  // TODOS (não abre modal)
   document.getElementById('btnRegionalTodos')?.addEventListener('click', () => {
     setRegionalUI('TODOS');
     setMapRegional('TODOS');
 
     currentData = [];
-    clientesCache = [];
     selectedAdditionalColumns = [];
     selectedAlimentadores = new Set(); // sem filtro
 
@@ -908,6 +690,9 @@ async function init() {
   });
 
   updateAlimentadoresBadge();
+
+  // setup do modal de clientes
+  setupClientesModalUI();
 }
 
 // Inicializar quando DOM estiver pronto
