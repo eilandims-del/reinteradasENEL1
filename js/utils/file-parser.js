@@ -131,19 +131,16 @@ function truncateText(value, max = 5000) {
   return s.length > max ? s.slice(0, max) : s;
 }
 
-/**
- * Normalizar dados da linha
- */
 // ✅ SUBSTITUA A FUNÇÃO normalizeRow INTEIRA POR ESTA
 function normalizeRow(row, headers) {
   const normalized = {};
 
   (headers || []).forEach((header, index) => {
-    const nh = normalizeColumnName(header); // <-- variável só aqui
+    const key = normalizeColumnName(header); // chave final normalizada/canonizada
     let value = row?.[index];
 
     // Datas
-    if (nh === 'DATA' || nh === 'DATA AVISO') {
+    if (key === 'DATA' || key === 'DATA AVISO') {
       value = parseDate(value);
     } else if (value !== null && value !== undefined) {
       value = String(value).trim();
@@ -151,13 +148,13 @@ function normalizeRow(row, headers) {
       value = '';
     }
 
-    // (opcional) truncar Observação CC / OBSERVACAO CC em 5000 chars
-    // Ajuste os nomes conforme seu header real (ex: "OBSERVAÇÃO CC")
-    if (nh === 'OBSERVACAO CC' || nh === 'OBSERVAÇÃO CC') {
-      value = String(value || '').slice(0, 5000);
+    // ✅ Truncar Observação CC (após normalização vira OBSERVACAO CC)
+    // E também qualquer coisa que comece com OBSERVACAO (mais robusto)
+    if (key === 'OBSERVACAO CC' || key.startsWith('OBSERVACAO')) {
+      value = truncateText(value, 5000);
     }
 
-    normalized[nh] = value;
+    normalized[key] = value;
   });
 
   // ✅ compatibilidade: se vier ELEMENTOS, copia para ELEMENTO
@@ -165,11 +162,10 @@ function normalizeRow(row, headers) {
     normalized.ELEMENTO = normalized.ELEMENTOS;
   }
 
-  // ✅ compatibilidade: se vier NUM_CLIENTE (canon), manter também Nº CLIENTE etc se quiser
-  // (não obrigatório)
-
   return normalized;
 }
+
+
 function isRowEmpty(row) {
   return !Object.values(row).some(v => {
     if (v === null || v === undefined) return false;
@@ -461,9 +457,4 @@ export async function parseFile(file, options = {}) {
   } else {
     throw new Error('Formato de arquivo não suportado');
   }
-}
-const normalizedRow = normalizeRow(row, headers);
-
-if (!isRowEmpty(normalizedRow)) {
-  data.push(normalizedRow);
 }
