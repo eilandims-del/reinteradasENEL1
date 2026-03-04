@@ -225,9 +225,16 @@ export class DataService {
         
               if (!finalRegional && dataset === 'CLIENTES') finalRegional = 'GERAL';
               if (!finalRegional && dataset === 'REITERADAS') return;
-        
+
+        // Remover campos pesados antes de salvar (mantém a UI leve e evita doc grande)
+              const DROP_FIELDS = ['CC', 'OBS', 'OBSERVACAO', 'OBSERVAÇÃO', 'COMENTARIOS', 'COMENTÁRIOS'];
+
+              const sanitized = { ...item };
+              for (const f of DROP_FIELDS) {
+                if (f in sanitized) delete sanitized[f];
+              }
               batch.set(ref, {
-                ...item,
+                ...sanitized,
                 REGIONAL: finalRegional,
                 regional: finalRegional,
                 dataset,
