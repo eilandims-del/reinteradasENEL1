@@ -390,11 +390,10 @@ export async function parseExcel(file, options = {}) {
                 const normalizedRow = normalizeRow(row, originalHeaders);
 
                 if (dataset === 'CLIENTES') {
-                    // para clientes, basta existir CLI. AFE (normalizado vira "CLIAFE")
-                    if (normalizedRow.CLIAFE || normalizedRow.CLIAFET) data.push(normalizedRow);
+                  // mínimo: ter NUM_CLIENTE e INCIDENCIA
+                  if (normalizedRow.NUM_CLIENTE && normalizedRow.INCIDENCIA) data.push(normalizedRow);
                 } else {
-                    // reiteradas (mantém regra antiga)
-                    if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
+                  if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
                 }
                 }
 
