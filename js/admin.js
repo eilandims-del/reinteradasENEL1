@@ -197,8 +197,7 @@ function pickRegionalFromRow(row) {
 }
 
 function hasClientesColumn(headers = []) {
-  const norm = (h) => normalizeFieldName(h).replace(/\s+/g, '');
-  // CLI. AFE / CLI AFE / CLI. AFET
+  const norm = (h) => normalizeFieldName(h).replace(/[^A-Z0-9]/g, '');
   return headers.some(h => {
     const v = norm(h);
     return v === 'CLIAFE' || v === 'CLIAFET';
@@ -253,7 +252,7 @@ async function handleReiteradasUpload(file, regionalKey, uiKey) {
     progressFill.style.width = '25%';
     progressText.textContent = 'Processando arquivo...';
 
-    const parsed = await parseFile(file);
+    const parsed = await parseFile(file, { dataset: 'REITERADAS' });
 
     const hasAREA = hasAreaColumn(parsed.headers || []);
     if (!hasAREA) {
@@ -387,7 +386,7 @@ async function handleClientesUpload(file, uiKey) {
     progressFill.style.width = '25%';
     progressText.textContent = 'Processando arquivo...';
 
-    const parsed = await parseFile(file);
+    const parsed = await parseFile(file, { dataset: 'CLIENTES' });
 
     const hasCLI = hasClientesColumn(parsed.headers || []);
     if (!hasCLI) {

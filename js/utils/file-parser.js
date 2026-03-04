@@ -5,7 +5,11 @@
 /**
  * Colunas obrigatórias que devem estar presentes
  */
-const REQUIRED_COLUMNS = ['INCIDENCIA', 'CAUSA', 'ALIMENT.', 'DATA', 'CONJUNTO'];
+// ✅ REITERADAS
+const REQUIRED_COLUMNS_REITERADAS = ['INCIDENCIA', 'CAUSA', 'ALIMENT.', 'DATA', 'CONJUNTO'];
+
+// ✅ CLIENTES
+const REQUIRED_COLUMNS_CLIENTES = ['CLI. AFE']; // aceita variações via hasClientesColumn
 
 /**
  * Normalizar nome da coluna (remove espaços, acentos, etc.)
@@ -18,37 +22,77 @@ function normalizeColumnName(name) {
         .replace(/\./g, '');
 }
 
+function normalizeHeader(h) {
+  return String(h || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\./g, '')
+    .trim();
+}
+
+function hasColumn(headers, candidates = []) {
+  const set = new Set((headers || []).map(normalizeHeader));
+  return candidates.some(c => set.has(normalizeHeader(c)));
+}
+
+function hasClientesColumn(headers = []) {
+  // CLI. AFE / CLI AFE / CLI. AFET / CLIAFE / CLIAFET
+  return hasColumn(headers, ['CLI. AFE', 'CLI AFE', 'CLI. AFET', 'CLIAFE', 'CLIAFET']);
+}
+
 /**
  * Validar estrutura do arquivo
  * Note: headers já devem estar normalizados
  */
-function validateStructure(headers) {
-    const required = REQUIRED_COLUMNS.map(col => normalizeColumnName(col));
-  
+function validateStructure(headers, options = {}) {
+  const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
+
+  // =========================
+  // ✅ REITERADAS
+  // =========================
+  if (dataset === 'REITERADAS') {
+    const required = REQUIRED_COLUMNS_REITERADAS.map(col => normalizeColumnName(col));
+
     // ✅ precisa ter ELEMENTO OU ELEMENTOS
     const hasElemento = headers.includes('ELEMENTO') || headers.includes('ELEMENTOS');
-  
+
     const missing = required.filter(req => !headers.includes(req));
-  
+
     if (missing.length > 0 || !hasElemento) {
       const faltando = [];
-  
-      // volta “bonito” na mensagem
+
       missing.forEach(norm => {
-        const original = REQUIRED_COLUMNS.find(col => normalizeColumnName(col) === norm);
+        const original = REQUIRED_COLUMNS_REITERADAS.find(col => normalizeColumnName(col) === norm);
         faltando.push(original || norm);
       });
-  
+
       if (!hasElemento) faltando.push('ELEMENTO (ou ELEMENTOS)');
-  
-      return {
-        valid: false,
-        error: `Colunas obrigatórias faltando: ${faltando.join(', ')}`
-      };
+
+      return { valid: false, error: `Colunas obrigatórias faltando: ${faltando.join(', ')}` };
     }
-  
+
     return { valid: true };
   }
+
+  // =========================
+  // ✅ CLIENTES
+  // =========================
+  if (dataset === 'CLIENTES') {
+    if (!hasClientesColumn(headers)) {
+      return {
+        valid: false,
+        error: 'Coluna obrigatória faltando: CLI. AFE (aceito: CLI. AFE / CLI AFE / CLI. AFET)'
+      };
+    }
+    return { valid: true };
+  }
+
+  // fallback
+  return { valid: true };
+}
   
 
 /**
@@ -211,58 +255,70 @@ function parseDate(value) {
 /**
  * Processar arquivo CSV
  */
-export async function parseCSV(file) {
+export async function parseCSV(file, options = {}) {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-
-        reader.onload = (e) => {
-            try {
-                const text = e.target.result;
-                const lines = text.split('\n').map(line => line.trim()).filter(line => line);
-                
-                if (lines.length < 2) {
-                    reject(new Error('Arquivo CSV muito pequeno ou vazio'));
-                    return;
-                }
-
-                // Parsear header
-                const headers = lines[0].split(',').map(h => normalizeColumnName(h));
-                const validation = validateStructure(headers);
-
-                if (!validation.valid) {
-                    reject(new Error(validation.error));
-                    return;
-                }
-
-                // Processar linhas
-                const data = [];
-                for (let i = 1; i < lines.length; i++) {
-                    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-                    const row = normalizeRow(values, lines[0].split(','));
-                    if (row.ELEMENTO && row.INCIDENCIA) {
-                        data.push(row);
-                    }
-                }
-
-                resolve({
-                    data,
-                    headers: lines[0].split(',').map(h => h.trim()),
-                    totalRows: data.length
-                });
-            } catch (error) {
-                reject(error);
+      const reader = new FileReader();
+  
+      reader.onload = (e) => {
+        try {
+          const text = e.target.result;
+          const lines = text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line);
+  
+          if (lines.length < 2) {
+            reject(new Error('Arquivo CSV muito pequeno ou vazio'));
+            return;
+          }
+  
+          const originalHeaders = lines[0].split(',').map(h => h.trim());
+          const headersNormalized = originalHeaders.map(h => normalizeColumnName(h));
+  
+          const validation = validateStructure(headersNormalized, options);
+          if (!validation.valid) {
+            reject(new Error(validation.error));
+            return;
+          }
+  
+          const data = [];
+          const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
+  
+          for (let i = 1; i < lines.length; i++) {
+            const values = lines[i]
+              .split(',')
+              .map(v => v.trim().replace(/^"|"$/g, ''));
+  
+            const normalizedRow = normalizeRow(values, originalHeaders);
+  
+            if (dataset === 'CLIENTES') {
+              // para clientes, basta existir CLI. AFE (normalizado vira "CLIAFE" ou "CLIAFET")
+              if (normalizedRow.CLIAFE || normalizedRow.CLIAFET) data.push(normalizedRow);
+            } else {
+              // reiteradas (mantém regra antiga)
+              if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
             }
-        };
-
-        reader.onerror = () => reject(new Error('Erro ao ler arquivo CSV'));
-        reader.readAsText(file, 'UTF-8');
+          }
+  
+          resolve({
+            data,
+            headers: originalHeaders,
+            totalRows: data.length
+          });
+        } catch (error) {
+          reject(error);
+        }
+      };
+  
+      reader.onerror = () => reject(new Error('Erro ao ler arquivo CSV'));
+      reader.readAsText(file, 'UTF-8');
     });
-}
+  }
 
 /**
  * Processar arquivo Excel (XLS, XLSX, XLSB)
  */
-export async function parseExcel(file) {
+export async function parseExcel(file, options = {}) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
@@ -290,7 +346,7 @@ export async function parseExcel(file) {
                 const headers = originalHeaders.map(h => normalizeColumnName(h));
 
                 // Validar estrutura
-                const validation = validateStructure(headers);
+                const validation = validateStructure(headers, options);
                 if (!validation.valid) {
                     reject(new Error(validation.error));
                     return;
@@ -298,12 +354,19 @@ export async function parseExcel(file) {
 
                 // Processar linhas
                 const data = [];
+                const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
+
                 for (let i = 1; i < jsonData.length; i++) {
-                    const row = jsonData[i];
-                    const normalizedRow = normalizeRow(row, originalHeaders);
-                    if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) {
-                        data.push(normalizedRow);
-                    }
+                const row = jsonData[i];
+                const normalizedRow = normalizeRow(row, originalHeaders);
+
+                if (dataset === 'CLIENTES') {
+                    // para clientes, basta existir CLI. AFE (normalizado vira "CLIAFE")
+                    if (normalizedRow.CLIAFE || normalizedRow.CLIAFET) data.push(normalizedRow);
+                } else {
+                    // reiteradas (mantém regra antiga)
+                    if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
+                }
                 }
 
                 resolve({
@@ -324,14 +387,14 @@ export async function parseExcel(file) {
 /**
  * Processar arquivo (detecta tipo automaticamente)
  */
-export async function parseFile(file) {
-    const fileName = file.name.toLowerCase();
-    
-    if (fileName.endsWith('.csv')) {
-        return await parseCSV(file);
-    } else if (fileName.endsWith('.xls') || fileName.endsWith('.xlsx') || fileName.endsWith('.xlsb')) {
-        return await parseExcel(file);
-    } else {
-        throw new Error('Formato de arquivo não suportado');
-    }
+export async function parseFile(file, options = {}) {
+  const fileName = file.name.toLowerCase();
+
+  if (fileName.endsWith('.csv')) {
+    return await parseCSV(file, options);
+  } else if (fileName.endsWith('.xls') || fileName.endsWith('.xlsx') || fileName.endsWith('.xlsb')) {
+    return await parseExcel(file, options);
+  } else {
+    throw new Error('Formato de arquivo não suportado');
+  }
 }
