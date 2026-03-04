@@ -134,41 +134,40 @@ function truncateText(value, max = 5000) {
 /**
  * Normalizar dados da linha
  */
+// ✅ SUBSTITUA A FUNÇÃO normalizeRow INTEIRA POR ESTA
 function normalizeRow(row, headers) {
   const normalized = {};
 
-  headers.forEach((header, index) => {
-    const normalizedHeader = normalizeColumnName(header);
-    let value = row[index];
+  (headers || []).forEach((header, index) => {
+    const nh = normalizeColumnName(header); // <-- variável só aqui
+    let value = row?.[index];
 
-    // datas
-    if (normalizedHeader === 'DATA' || normalizedHeader === 'DATA AVISO') {
+    // Datas
+    if (nh === 'DATA' || nh === 'DATA AVISO') {
       value = parseDate(value);
+    } else if (value !== null && value !== undefined) {
+      value = String(value).trim();
     } else {
-      // texto
-      if (normalizedHeader === 'OBSERVACAO CC') {
-        // "Observação CC" vira "OBSERVACAO CC" pela sua normalização (remove acento)
-        value = truncateText(value, 5000);
-      } else if (value !== null && value !== undefined) {
-        value = String(value).trim();
-      } else {
-        value = '';
-      }
+      value = '';
     }
 
-    normalized[normalizedHeader] = value;
+    // (opcional) truncar Observação CC / OBSERVACAO CC em 5000 chars
+    // Ajuste os nomes conforme seu header real (ex: "OBSERVAÇÃO CC")
+    if (nh === 'OBSERVACAO CC' || nh === 'OBSERVAÇÃO CC') {
+      value = String(value || '').slice(0, 5000);
+    }
+
+    normalized[nh] = value;
   });
 
-  // compatibilidade
+  // ✅ compatibilidade: se vier ELEMENTOS, copia para ELEMENTO
   if (!normalized.ELEMENTO && normalized.ELEMENTOS) {
     normalized.ELEMENTO = normalized.ELEMENTOS;
   }
-  if (normalizedHeader === 'OBSERVACAO CC') {
-    const original = value;
-    const truncated = truncateText(value, 5000);
-    value = truncated;
-    normalized['OBS_CC_TRUNCADO'] = String(original ?? '').trim().length > 5000;
-  }
+
+  // ✅ compatibilidade: se vier NUM_CLIENTE (canon), manter também Nº CLIENTE etc se quiser
+  // (não obrigatório)
+
   return normalized;
 }
 
