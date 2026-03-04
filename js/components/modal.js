@@ -83,17 +83,34 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
   // Limpar conteúdo anterior
   modalContent.innerHTML = '';
 
+  const isClientes = Array.isArray(ocorrencias) && ocorrencias.some(o =>
+    getValueSmart(o, 'NUM_CLIENTE') ||
+    getValueSmart(o, 'DATA AVISO') ||
+    getValueSmart(o, 'NOME CLIENTE')
+  );
+
   // Ordem fixa dos campos principais
-  const fixedFields = [
-    { key: 'INCIDENCIA', label: 'INCIDÊNCIA' },
-    { key: 'NUM_CLIENTE', label: 'NUM_CLIENTE' },   // ✅ ADD
-    { key: 'ELEMENTO', label: 'ELEMENTO' },
-    { key: 'DATA', label: 'DATA' },
-    { key: 'CAUSA', label: 'CAUSA' },
-    { key: 'CLI. AFE', label: 'CLI. AFE' },
-    { key: 'ALIMENT.', label: 'ALIMENTADOR' },
-    { key: 'CONJUNTO', label: 'CONJUNTO' }
-  ];
+  const fixedFields = isClientes
+  ? [
+      { key: 'INCIDENCIA', label: 'INCIDÊNCIA' },
+      { key: 'NUM_CLIENTE', label: 'Nº CLIENTE' },
+      { key: 'NOME CLIENTE', label: 'NOME CLIENTE' },
+      { key: 'MUNICIPIO', label: 'MUNICÍPIO' },
+      { key: 'CAUSA', label: 'CAUSA' },
+      { key: 'CHI', label: 'CHI' },
+      { key: 'AFET.', label: 'AFET.' },
+      { key: 'DATA AVISO', label: 'DATA AVISO' }
+    ]
+  : [
+      { key: 'INCIDENCIA', label: 'INCIDÊNCIA' },
+      { key: 'NUM_CLIENTE', label: 'NUM_CLIENTE' },
+      { key: 'ELEMENTO', label: 'ELEMENTO' },
+      { key: 'DATA', label: 'DATA' },
+      { key: 'CAUSA', label: 'CAUSA' },
+      { key: 'CLI. AFE', label: 'CLI. AFE' },
+      { key: 'ALIMENT.', label: 'ALIMENTADOR' },
+      { key: 'CONJUNTO', label: 'CONJUNTO' }
+    ];
   
 
   // Normaliza colunas adicionais e remove duplicadas (por segurança)
@@ -165,7 +182,7 @@ export function fillDetailsModal(elemento, ocorrencias, selectedColumns = []) {
           }
         }
         // DATA formatada
-        else if (field.key === 'DATA' && value !== 'N/A') {
+        else if ((field.key === 'DATA' || field.key === 'DATA AVISO') && value !== 'N/A') {
           td.textContent = formatDate(value);
         }
         else {

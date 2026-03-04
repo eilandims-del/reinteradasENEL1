@@ -67,6 +67,22 @@ let selectedAlimentadores = new Set();
 
 // ===== Helpers =====
 
+function filterClientesByPeriod(rows, di, df) {
+  const a = di ? String(di) : '';
+  const b = df ? String(df) : '';
+
+  if (!a && !b) return rows || [];
+
+  return (rows || []).filter(r => {
+    const d = String(getFieldValue(r, 'DATA AVISO') || '').trim();
+    if (!d) return false;
+
+    if (a && d < a) return false;
+    if (b && d > b) return false;
+    return true;
+  });
+}
+
 function getCatalogForRegional(regional) {
   const r = String(regional || '').trim().toUpperCase();
   if (!r) return [];
@@ -292,17 +308,35 @@ async function renderAll() {
 
     clientesCache = rows;
 
-    renderRankingClientesNoMesmoPainel(rows);
-
-    // gráficos/heatmap são de reiteradas
+    const di = document.getElementById('dataInicial')?.value || '';
+    const df = document.getElementById('dataFinal')?.value || '';
+    
+    const rowsFiltradas = filterClientesByPeriod(rows, di, df);
+    
+    // ✅ 3 cards baseados na planilha de CLIENTES
+    // (essas funções já existem no ranking.js)
+    try { 
+      // cliente = NUM_CLIENTE (já vem canônico do parser)
+      (await import('./components/ranking.js')).renderRankingCliente?.(rowsFiltradas);
+      (await import('./components/ranking.js')).renderRankingCausa?.(rowsFiltradas);
+    
+      // 3º card: se existir ALIMENTADOR/ALIMENT., usa alimentador
+      const hasAlim = rowsFiltradas.some(r => getFieldValue(r, 'ALIMENT.') || getFieldValue(r, 'ALIMENTADOR'));
+      if (hasAlim) {
+        (await import('./components/ranking.js')).renderRankingAlimentador?.(rowsFiltradas);
+      } else {
+        // fallback: MUNICIPIO (mais coerente com sua planilha atual)
+        (await import('./components/ranking.js')).renderRankingMunicipio?.(rowsFiltradas);
+      }
+    } catch (_) {}
+    
+    // limpar charts/heatmap/estruturas
     try { updateCharts([]); } catch (_) {}
     try { updateHeatmap([]); } catch (_) {}
-
-    // estruturas são de reiteradas
     try { updateEstruturasContext({ regional: selectedRegional, rows: [], catalog: [], selectedAlimentadores }); } catch (_) {}
-
+    
     updateAlimentadoresBadge();
-    return;
+    return;  
   }
 
   // ✅ MODO REITERADAS (comportamento atual)

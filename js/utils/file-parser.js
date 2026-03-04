@@ -9,17 +9,29 @@
 const REQUIRED_COLUMNS_REITERADAS = ['INCIDENCIA', 'CAUSA', 'ALIMENT.', 'DATA', 'CONJUNTO'];
 
 // ✅ CLIENTES
-const REQUIRED_COLUMNS_CLIENTES = ['CLI. AFE']; // aceita variações via hasClientesColumn
+const REQUIRED_COLUMNS_CLIENTES = [
+  'INCIDENCIA',
+  'Nº CLIENTE',
+  'NOME CLIENTE',
+  'MUNICIPIO',
+  'CAUSA',
+  'CHI',
+  'AFET.',
+  'DATA AVISO'
+];
+
 
 /**
  * Normalizar nome da coluna (remove espaços, acentos, etc.)
  */
 function normalizeColumnName(name) {
-    return name.trim().toUpperCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .replace(/\./g, '');
+  const base = name.trim().toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\./g, '');
+
+  return canonicalizeHeader(base);
 }
 
 function normalizeHeader(h) {
@@ -31,6 +43,24 @@ function normalizeHeader(h) {
     .replace(/\s+/g, ' ')
     .replace(/\./g, '')
     .trim();
+}
+
+function canonicalizeHeader(normalizedHeader) {
+  const h = String(normalizedHeader || '').trim().toUpperCase();
+
+  // Nº / N° / NO / NUM -> NUM_CLIENTE
+  if (
+    h === 'Nº CLIENTE' || h === 'N° CLIENTE' || h === 'NO CLIENTE' ||
+    h === 'NUM CLIENTE' || h === 'NUM_CLIENTE' || h === 'N CLIENTE'
+  ) return 'NUM_CLIENTE';
+
+  // padroniza AFET.
+  if (h === 'AFET' || h === 'AFET.' || h === 'AFETADOS') return 'AFET.';
+
+  // padroniza DATA AVISO
+  if (h === 'DATAAVISO' || h === 'DATA AVISO' || h === 'DT AVISO') return 'DATA AVISO';
+
+  return h;
 }
 
 function hasColumn(headers, candidates = []) {
@@ -81,11 +111,12 @@ function validateStructure(headers, options = {}) {
   // ✅ CLIENTES
   // =========================
   if (dataset === 'CLIENTES') {
-    if (!hasClientesColumn(headers)) {
-      return {
-        valid: false,
-        error: 'Coluna obrigatória faltando: CLI. AFE (aceito: CLI. AFE / CLI AFE / CLI. AFET)'
-      };
+    const required = REQUIRED_COLUMNS_CLIENTES.map(col => normalizeColumnName(col));
+    const missing = required.filter(req => !headers.includes(req));
+  
+    if (missing.length > 0) {
+      const faltando = missing.map(m => m);
+      return { valid: false, error: `Colunas obrigatórias faltando (CLIENTES): ${faltando.join(', ')}` };
     }
     return { valid: true };
   }
@@ -104,10 +135,9 @@ function normalizeRow(row, headers) {
     headers.forEach((header, index) => {
         const normalizedHeader = normalizeColumnName(header);
         let value = row[index];
-        
         // Tratamento especial para DATA
-        if (normalizedHeader === 'DATA') {
-            value = parseDate(value);
+        if (normalizedHeader === 'DATA' || normalizedHeader === 'DATA AVISO') {
+          value = parseDate(value);
         } else if (value !== null && value !== undefined) {
             value = String(value).trim();
         } else {
@@ -292,10 +322,9 @@ export async function parseCSV(file, options = {}) {
             const normalizedRow = normalizeRow(values, originalHeaders);
   
             if (dataset === 'CLIENTES') {
-              // para clientes, basta existir CLI. AFE (normalizado vira "CLIAFE" ou "CLIAFET")
-              if (normalizedRow.CLIAFE || normalizedRow.CLIAFET) data.push(normalizedRow);
+              // agora o mínimo é ter NUM_CLIENTE e INCIDENCIA
+              if (normalizedRow.NUM_CLIENTE && normalizedRow.INCIDENCIA) data.push(normalizedRow);
             } else {
-              // reiteradas (mantém regra antiga)
               if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
             }
           }

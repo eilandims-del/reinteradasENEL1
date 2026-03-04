@@ -195,24 +195,6 @@ function pickRegionalFromRow(row) {
 
   return '';
 }
-
-function hasClientesColumn(headers = []) {
-  const norm = (h) => normalizeFieldName(h).replace(/[^A-Z0-9]/g, '');
-  return headers.some(h => {
-    const v = norm(h);
-    return v === 'CLIAFE' || v === 'CLIAFET';
-  });
-}
-
-function getCliAfeValue(row) {
-  if (!row || typeof row !== 'object') return '';
-  return (
-    row['CLI. AFE'] ?? row['CLI AFE'] ?? row['CLI. AFET'] ??
-    row['CLIAFE'] ?? row['CLIAFET'] ??
-    ''
-  );
-}
-
 /* =========================
    Roteamento de upload
 ========================= */
@@ -388,26 +370,22 @@ async function handleClientesUpload(file, uiKey) {
 
     const parsed = await parseFile(file, { dataset: 'CLIENTES' });
 
-    const hasCLI = hasClientesColumn(parsed.headers || []);
-    if (!hasCLI) {
-      throw new Error('Coluna "CLI. AFE" não encontrada. (aceito: CLI. AFE / CLI AFE / CLI. AFET)');
-    }
-
-    progressFill.style.width = '40%';
-    progressText.textContent = 'Validando clientes...';
-
+    // parseFile agora já valida estrutura CLIENTES (colunas obrigatórias)
     const rows = Array.isArray(parsed.data) ? parsed.data : [];
 
-    const cleaned = rows
-      .map(r => {
-        const cli = String(getCliAfeValue(r) ?? '').trim();
-        const reg = pickRegionalFromRow(r) || 'GERAL';
-        return { ...r, 'CLI. AFE': cli, REGIONAL: reg, regional: reg };
-      })
-      .filter(r => String(r['CLI. AFE'] || '').trim().length > 0);
+    const cleaned = rows.map(r => {
+      const reg = pickRegionalFromRow(r) || 'GERAL';
 
+      return {
+        ...r,
+        REGIONAL: reg,
+        regional: reg
+      };
+    });
+
+    // segurança extra
     if (!cleaned.length) {
-      throw new Error('Nenhuma linha válida com "CLI. AFE".');
+      throw new Error('Nenhuma linha válida encontrada (CLIENTES).');
     }
 
     progressFill.style.width = '55%';

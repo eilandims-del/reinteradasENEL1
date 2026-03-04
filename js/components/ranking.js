@@ -373,6 +373,13 @@ export function updateRanking(data) {
   renderRankingElemento(data);
 }
 
+export function renderRankingMunicipio(data) {
+  const ranking = generateRankingByFieldMulti(data, ['MUNICIPIO', 'MUNICÍPIO']);
+  renderRankingGeneric('rankingAlimentador', ranking, (name, ocorrencias) =>
+    openGenericDetails('MUNICIPIO', name, ocorrencias)
+  );
+}
+
 /* =========================
    Detalhes / Modal
 ========================= */
