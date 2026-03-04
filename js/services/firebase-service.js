@@ -194,11 +194,11 @@ export class DataService {
         }
       }
 
-      const BATCH_SIZE = 200;
+      const BATCH_SIZE = 50;
       const THROTTLE_MS = 900;
 
-      const MAX_RETRIES = 8;
-      const INITIAL_BACKOFF_MS = 2000;
+      const MAX_RETRIES = 3;
+      const INITIAL_BACKOFF_MS = 800;
 
       let totalSaved = 0;
       const totalBatches = Math.ceil(data.length / BATCH_SIZE);
@@ -214,18 +214,18 @@ export class DataService {
         while (!batchSuccess && retryCount < MAX_RETRIES) {
           try {
             const batch = writeBatch(db);
-
+        
             batchData.forEach((item, index) => {
               const rowIndex = startIndex + index;
               const docId = `${uploadId}_${rowIndex}`;
               const ref = doc(db, collectionName, docId);
-
+        
               const rowRegional = this._pickRegionalFromRow(item);
               let finalRegional = rowRegional || fallbackRegional;
-
+        
               if (!finalRegional && dataset === 'CLIENTES') finalRegional = 'GERAL';
               if (!finalRegional && dataset === 'REITERADAS') return;
-
+        
               batch.set(ref, {
                 ...item,
                 REGIONAL: finalRegional,
@@ -236,12 +236,12 @@ export class DataService {
                 createdAt: serverTimestamp()
               }, { merge: true });
             });
-
+        
             await batch.commit();
-
+        
             totalSaved += batchData.length;
             batchSuccess = true;
-
+        
             if (progressCallback) {
               progressCallback({
                 batch: batchIndex + 1,
@@ -254,10 +254,24 @@ export class DataService {
                 nextRetryIn: 0
               });
             }
+        
           } catch (error) {
+        
+            console.error('[FIRESTORE BATCH ERROR]', {
+              dataset,
+              batch: batchIndex + 1,
+              retry: retryCount,
+              code: error?.code,
+              message: error?.message
+            }, error);
+        
             retryCount++;
-            const delay = Math.min(INITIAL_BACKOFF_MS * Math.pow(2, retryCount), 60000);
-
+        
+            const delay = Math.min(
+              INITIAL_BACKOFF_MS * Math.pow(2, retryCount),
+              60000
+            );
+        
             if (progressCallback) {
               progressCallback({
                 batch: batchIndex + 1,
@@ -270,9 +284,12 @@ export class DataService {
                 nextRetryIn: Math.round(delay / 1000)
               });
             }
-
+        
+            if (retryCount >= MAX_RETRIES) {
+              throw error;
+            }
+        
             await this.sleep(delay);
-            if (retryCount >= MAX_RETRIES) throw error;
           }
         }
 
