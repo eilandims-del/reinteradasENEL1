@@ -11,7 +11,7 @@
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
-import { parseFile } from './utils/file-parser.js';
+import { parseFile } from './utils/file-parser.js?v=20260304-1';
 import { showToast } from './utils/helpers.js';
 
 let currentUser = null;

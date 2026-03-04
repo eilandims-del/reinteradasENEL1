@@ -20,6 +20,8 @@ const REQUIRED_COLUMNS_CLIENTES = [
   'DATA AVISO'
 ];
 
+const MAX_UPLOAD_ROWS = 10000;
+
 
 /**
  * Normalizar nome da coluna (remove espaços, acentos, etc.)
@@ -366,6 +368,7 @@ export async function parseCSV(file, options = {}) {
  * Processar arquivo Excel (XLS, XLSX, XLSB)
  */
 export async function parseExcel(file, options = {}) {
+
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
 
@@ -427,6 +430,15 @@ export async function parseExcel(file, options = {}) {
                       data.push(normalizedRow);
                     }
                   }
+                }
+
+                if (data.length > MAX_UPLOAD_ROWS) {
+                  reject(new Error(
+                    `Planilha muito grande (${data.length} linhas). 
+                Limite máximo permitido: ${MAX_UPLOAD_ROWS}. 
+                Verifique se a planilha não possui milhares de linhas vazias.`
+                  ));
+                  return;
                 }
 
                 resolve({

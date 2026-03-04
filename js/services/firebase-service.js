@@ -194,8 +194,8 @@ export class DataService {
         }
       }
 
-      const BATCH_SIZE = 50;
-      const THROTTLE_MS = 900;
+      const BATCH_SIZE = 450;
+      const THROTTLE_MS = 0;
 
       const MAX_RETRIES = 3;
       const INITIAL_BACKOFF_MS = 800;
@@ -245,9 +245,12 @@ export class DataService {
             });
         
             await batch.commit();
-        
+
             totalSaved += batchData.length;
             batchSuccess = true;
+            
+            // pequena pausa a cada 10 batches
+            if (batchIndex % 10 === 0) await this.sleep(50);
         
             if (progressCallback) {
               progressCallback({
