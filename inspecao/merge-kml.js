@@ -266,8 +266,15 @@ function buildKml(rows, idx) {
 
   // ---- Categoria: usa ALIMENTADOR; se vazio, usa INSTALACAO_NOVA (porque é onde vem CND01C4 etc)
   function detectCategory(row) {
-    console.log("DETECT CATEGORY ATIVO ✅");
-    return "TESTE_FIXO";
+    const alim = normalizeKey(row.ALIMENTADOR || row.INSTALACAO_NOVA || "");
+  
+    const hit = ALIM_LOOKUP.get(alim);
+    if (hit?.subestacao) return hit.subestacao;
+  
+    const sub = String(row.SUBESTACAO || "").trim();
+    if (sub) return sub;
+  
+    return "Outros";
   }
 
   const groups = {};
