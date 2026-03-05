@@ -70,6 +70,7 @@ export class DataService {
   static CLIENTES_COLLECTION = "clientes_afetados";
   static UPLOADS_COLLECTION = "uploads";
   static CLIENTES_TOP_COLLECTION = "clientes_top";
+  static RETORNOS_COLLECTION = "retornos_inspetores";
 
   static REGIONAIS = {
     ATLANTICO: "ATLANTICO",
@@ -629,7 +630,132 @@ static async getRetornosAdminFiltrado(filters = {}) {
     }
   }
 
+  
   /* =========================
+   RETORNOS INSPETORES (NOVO)
+========================= */
+
+  /**
+   * Salva/atualiza retorno do inspetor para uma incidência.
+   * docId estável: "<INCIDENCIA>__<UID>"
+   */
+  static async saveRetornoInspetor(payload = {}) {
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Usuário não autenticado.');
+
+      const incidencia = String(payload.incidencia || '').trim();
+      if (!incidencia) throw new Error('incidencia é obrigatória.');
+
+      const uid = user.uid;
+      const email = user.email || 'unknown';
+
+      const docId = `${incidencia}__${uid}`;
+      const ref = doc(db, this.RETORNOS_COLLECTION, docId);
+
+      // preservar createdAt se já existir
+      let createdAtValue = null;
+      try {
+        const snap = await getDoc(ref);
+        if (snap.exists()) createdAtValue = snap.data()?.createdAt || null;
+      } catch (_) {}
+
+      const row = {
+        incidencia,
+        regional: String(payload.regional || '').trim().toUpperCase() || '',
+        dataRef: String(payload.dataRef || '').trim(), // ISO YYYY-MM-DD (se tiver)
+        elemento: String(payload.elemento || '').trim(),
+        alimentador: String(payload.alimentador || '').trim(),
+        causa: String(payload.causa || '').trim(),
+        clienteAfetado: String(payload.clienteAfetado || '').trim(),
+        retornoTexto: String(payload.retornoTexto || '').trim(),
+
+        inspectorUid: uid,
+        inspectorEmail: email,
+
+        createdAt: createdAtValue ? createdAtValue : serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      await setDoc(ref, row, { merge: true });
+      return { success: true, id: docId };
+
+    } catch (error) {
+      console.error('[SAVE RETORNO]', error);
+      return { success: false, error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Retorna retornos do inspetor logado (para marcar bolinha verde no painel).
+   * Sem orderBy para evitar índice composto.
+   */
+  static async getRetornosDoInspetor() {
+    try {
+      const user = auth.currentUser;
+      if (!user) return { success: true, data: [] };
+
+      const uid = user.uid;
+
+      const colRef = collection(db, this.RETORNOS_COLLECTION);
+      const q1 = query(colRef, where('inspectorUid', '==', uid), limit(5000));
+      const snap = await getDocs(q1);
+
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('[GET RETORNOS INSPETOR]', error);
+      return { success: false, error: error?.message || String(error), data: [] };
+    }
+  }
+
+  /**
+   * Admin: lista retornos (últimos 5000) ordenados por updatedAt.
+   */
+  static async getRetornosAdmin() {
+    try {
+      const colRef = collection(db, this.RETORNOS_COLLECTION);
+      const q1 = query(colRef, orderBy('updatedAt', 'desc'), limit(5000));
+      const snap = await getDocs(q1);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return { success: true, data };
+
+    } catch (error) {
+      console.error('[GET RETORNOS ADMIN]', error);
+      return { success: false, error: error?.message || String(error), data: [] };
+    }
+  }
+
+  /**
+   * Admin: filtra retornos por regional e período (filtro client-side para evitar índices compostos).
+   */
+  static async getRetornosAdminFiltrado(filters = {}) {
+    try {
+      const regional = this.normalizeRegional(filters.regional);
+      const di = String(filters.dataInicial || '').trim();
+      const df = String(filters.dataFinal || '').trim();
+
+      const res = await this.getRetornosAdmin();
+      if (!res?.success) return res;
+
+      let data = Array.isArray(res.data) ? res.data : [];
+
+      if (regional && regional !== 'TODOS') {
+        data = data.filter(r => String(r.regional || r.REGIONAL || '').toUpperCase() === regional);
+      }
+
+      if (di) data = data.filter(r => String(r.dataRef || '') >= di);
+      if (df) data = data.filter(r => String(r.dataRef || '') <= df);
+
+      return { success: true, data };
+    } catch (error) {
+      console.error('[GET RETORNOS ADMIN FILTRADO]', error);
+      return { success: false, error: error?.message || String(error), data: [] };
+    }
+  }
+
+/* =========================
      CLEAR ALL DATA
   ========================= */
   static async clearAllData() {
