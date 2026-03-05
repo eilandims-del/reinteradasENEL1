@@ -1,0 +1,31 @@
+.login-body { min-height: 100vh; }
+.login-container { max-width: 560px; }
+.login-card { padding: 18px; }
+.login-card-head { margin-bottom: 14px; }
+.login-muted { color: var(--medium-gray); font-weight: 700; margin: 6px 0 0 0; }
+
+.role-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0 16px;
+}
+.role-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  cursor: pointer;
+  transition: .15s ease;
+}
+.role-btn i { font-size: 1.2rem; opacity: .9; }
+.role-btn span small { color: var(--medium-gray); font-weight: 800; }
+.role-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,.06); }
+.role-btn.active { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 123, 255, .10); }
+.login-footer { margin-top: 14px; }
+@media (max-width: 540px) {
+  .role-picker { grid-template-columns: 1fr; }
+}
