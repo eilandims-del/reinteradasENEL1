@@ -9,29 +9,34 @@ import { formatDate } from '../utils/helpers.js';
  */
 export function openModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.add('active');
-    document.body.style.overflow = 'hidden';
-  }
+  if (!modal) return;
+
+  // ✅ z-index crescente (garante sempre por cima)
+  const nextZ = (window.__modalZIndex = (window.__modalZIndex || 1000) + 10);
+  modal.style.zIndex = String(nextZ);
+
+  modal.classList.add('active');
+  document.body.style.overflow = 'hidden';
 }
 
 /**
  * Fechar modal
  */
-
 export function closeModal(modalId) {
-  // ✅ Hook opcional: permite bloquear o fechamento (X/ESC/backdrop)
+  // ✅ Hook opcional: permite bloquear o fechamento
   if (window.__beforeCloseModal && window.__beforeCloseModal(modalId) === false) {
     return;
   }
 
   const modal = document.getElementById(modalId);
-  if (modal) {
-    modal.classList.remove('active');
-    document.body.style.overflow = '';
-  }
-}
+  if (!modal) return;
 
+  modal.classList.remove('active');
+
+  // ✅ só libera scroll se NÃO houver mais modais abertos
+  const anyOpen = document.querySelector('.modal.active');
+  if (!anyOpen) document.body.style.overflow = '';
+}
 
 /**
  * Inicializar eventos de fechamento de modal

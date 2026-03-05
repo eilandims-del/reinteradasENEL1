@@ -70,6 +70,7 @@ export class DataService {
   static CLIENTES_COLLECTION = "clientes_afetados";
   static UPLOADS_COLLECTION = "uploads";
   static CLIENTES_TOP_COLLECTION = "clientes_top";
+  static RETORNOS_COLLECTION = "retornos_inspetores";
 
   static REGIONAIS = {
     ATLANTICO: "ATLANTICO",
@@ -482,21 +483,32 @@ export class DataService {
   }
 /* =========================
    GET CLIENTES (CLIENTES_AFETADOS)
-   - NÃO depende de DATA (a planilha de clientes pode não ter período)
-   - filtra por REGIONAL se vier (ATLANTICO/NORTE/CENTRO NORTE)
+   - Sem orderBy no Firestore para NÃO exigir índice composto
+   - Ordena no client por createdAt (se existir)
 ========================= */
 static async getClientesData(filters = {}) {
   try {
     const regional = this.normalizeRegional(filters.regional);
-
     const colRef = collection(db, this.CLIENTES_COLLECTION);
+
+    // helper: ordenar no client (createdAt pode ser Timestamp ou undefined)
+    const sortByCreatedAtDesc = (arr) => {
+      const toMs = (v) => {
+        if (!v) return 0;
+        // Firestore Timestamp: { seconds, nanoseconds } ou objeto com toMillis()
+        if (typeof v?.toMillis === 'function') return v.toMillis();
+        if (typeof v?.seconds === 'number') return v.seconds * 1000;
+        return 0;
+      };
+      return (arr || []).sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+    };
 
     // ✅ TODOS: não filtra REGIONAL
     if (regional === 'TODOS') {
-      const qAll = query(colRef, orderBy("createdAt", "desc"), limit(5000));
+      const qAll = query(colRef, limit(5000));
       const snap = await getDocs(qAll);
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      return { success: true, data };
+      return { success: true, data: sortByCreatedAtDesc(data) };
     }
 
     // ✅ Regional específica
@@ -504,15 +516,13 @@ static async getClientesData(filters = {}) {
       const q1 = query(
         colRef,
         where("REGIONAL", "==", regional),
-        orderBy("createdAt", "desc"),
         limit(5000)
       );
       const snap = await getDocs(q1);
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      return { success: true, data };
+      return { success: true, data: sortByCreatedAtDesc(data) };
     }
 
-    // sem regional selecionada
     return { success: true, data: [] };
   } catch (error) {
     console.error("[GET CLIENTES]", error);
@@ -596,6 +606,103 @@ static async getClientesData(filters = {}) {
       return { success: false, error: error?.message || String(error), deletedCount: 0 };
     }
   }
+
+  /* =========================
+   RETORNOS INSPETORES (NOVO)
+========================= */
+
+/**
+ * Salva/atualiza retorno do inspetor para uma incidência.
+ * docId estável: "<INCIDENCIA>__<UID>"
+ */
+static async saveRetornoInspetor(payload = {}) {
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Usuário não autenticado.');
+
+    const incidencia = String(payload.incidencia || '').trim();
+    if (!incidencia) throw new Error('incidencia é obrigatória.');
+
+    const uid = user.uid;
+    const email = user.email || 'unknown';
+
+    const docId = `${incidencia}__${uid}`;
+    const ref = doc(db, this.RETORNOS_COLLECTION, docId);
+
+    // preservar createdAt se já existir (evita mudar o "dia" num update)
+    let createdAtValue = null;
+    try {
+      const snap = await getDoc(ref);
+      if (snap.exists()) createdAtValue = snap.data()?.createdAt || null;
+    } catch (_) {}
+
+    const row = {
+      incidencia,
+      regional: String(payload.regional || '').trim().toUpperCase() || '',
+      dataRef: String(payload.dataRef || '').trim(), // ISO (YYYY-MM-DD) da reiterada (se tiver)
+      elemento: String(payload.elemento || '').trim(),
+      alimentador: String(payload.alimentador || '').trim(),
+      causa: String(payload.causa || '').trim(),
+      clienteAfetado: String(payload.clienteAfetado || '').trim(),
+      retornoTexto: String(payload.retornoTexto || '').trim(),
+
+      inspectorUid: uid,
+      inspectorEmail: email,
+
+      createdAt: createdAtValue ? createdAtValue : serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    await setDoc(ref, row, { merge: true });
+    return { success: true, id: docId };
+
+  } catch (error) {
+    console.error('[SAVE RETORNO]', error);
+    return { success: false, error: error?.message || String(error) };
+  }
+}
+
+/**
+ * Retorna retornos do inspetor logado (para marcar bolinha verde no painel).
+ * Sem orderBy para evitar índice composto.
+ */
+static async getRetornosDoInspetor(filters = {}) {
+  try {
+    const user = auth.currentUser;
+    if (!user) return { success: true, data: [] };
+
+    const uid = user.uid;
+
+    const colRef = collection(db, this.RETORNOS_COLLECTION);
+    const q1 = query(colRef, where('inspectorUid', '==', uid), limit(5000));
+    const snap = await getDocs(q1);
+
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, data };
+
+  } catch (error) {
+    console.error('[GET RETORNOS INSPETOR]', error);
+    return { success: false, error: error?.message || String(error), data: [] };
+  }
+}
+
+/**
+ * Admin: lista retornos (últimos 5000) ordenados por updatedAt.
+ * Sem where (filtragem de data/regional feita no client pra evitar índice).
+ */
+static async getRetornosAdmin() {
+  try {
+    const colRef = collection(db, this.RETORNOS_COLLECTION);
+    const q1 = query(colRef, orderBy('updatedAt', 'desc'), limit(5000));
+    const snap = await getDocs(q1);
+    const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    return { success: true, data };
+
+  } catch (error) {
+    console.error('[GET RETORNOS ADMIN]', error);
+    return { success: false, error: error?.message || String(error), data: [] };
+  }
+}
 
   /* =========================
      CLEAR ALL DATA
