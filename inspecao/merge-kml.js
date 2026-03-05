@@ -23,43 +23,36 @@ const ALIM_TREE = {
     },
   },
 
-  "NORTE": {
-    "INHUÇU": {
-      "Inhuçu": [
-        "INH01I2","INH01I3","INH01I4","INH01I5","INH01I6","INH01I7",
-        "IBP01I1","IBP01I2","IBP01I3","IBP01I4","IBP01I5",
-        "GCN01N1","GCN01N2","GCN01N5"
-      ]
-    },
-
-    "TIANGUÁ": {
-      "Tianguá": [
-        "MCB01M2","MCB01M3","MCB01M4",
-        "VCS01C2","VCS01C3","VCS01C4","VCS01C5",
-        "TNG01S1","TNG01S2","TNG01S3","TNG01S4","TNG01S5","TNG01S6","TNG01S7"
-      ]
-    },
-
-    "SOBRAL": {
-      "Sobral": [
-        "SBU01S1","SBU01S2","SBU01S3","SBU01S4","SBU01S5","SBU01S6","SBU01S7","SBU01S8","SBU01S9",
-        "SBQ01F2","SBQ01F3","SBQ01F4",
-        "SBC01L1","SBC01L2","SBC01L3","SBC01L4","SBC01L5",
-        "MSP01P1","MSP01P2","MSP01P3","MSP01P4",
-        "CRU01C2","CRU01C3","CRU01C4",
-        "CRE01C2","CRE01C4",
-        "CRC01C1","CRC01C2","CRC01C3","CRC01C4"
-      ]
-    },
-
-    "CAMOCIM": {
-      "Camocim": [
-        "CMM01C1","CMM01C2","CMM01C3","CMM01C4",
-        "GRJ01N1","GRJ01N2","GRJ01N3","GRJ01N4",
-        "BRQ01F1","BRQ01F2"
-      ]
-    }
+"NORTE": {
+  "INHUÇU": {
+    "Inhuçu": [
+      "INH01I2","INH01I3","INH01I4","INH01I5","INH01I6","INH01I7",
+      "IBP01I1","IBP01I2","IBP01I3","IBP01I4","IBP01I5",
+      "GCN01N1","GCN01N2","GCN01N5"
+    ]
   },
+
+  "SOBRAL": {
+    "Sobral": [
+      "SBU01S1","SBU01S2","SBU01S3","SBU01S4","SBU01S5","SBU01S6","SBU01S7","SBU01S8","SBU01S9",
+      "SBQ01F2","SBQ01F3","SBQ01F4",
+      "SBC01L1","SBC01L2","SBC01L3","SBC01L4","SBC01L5",
+      "MSP01P1","MSP01P2","MSP01P3","MSP01P4",
+      "CRZ01P1","CRZ01P2","CRZ01P3","CRZ01P4",   
+      "CRU01C2","CRU01C3","CRU01C4",             
+      "CRE01C2","CRE01C4",
+      "CRC01C1","CRC01C2","CRC01C3","CRC01C4"    
+    ]
+  },
+
+  "CAMOCIM": {
+    "Camocim": [
+      "CMM01C1","CMM01C2","CMM01C3","CMM01C4",
+      "BRQ01F1","BRQ01F2",
+      "GRJ01N1","GRJ01N2","GRJ01N3","GRJ01N4"
+    ]
+  }
+},
 
   "CENTRO NORTE": {
     "CANINDÉ": {
@@ -273,18 +266,14 @@ function buildKml(rows, idx) {
 
   // ---- Categoria: usa ALIMENTADOR; se vazio, usa INSTALACAO_NOVA (porque é onde vem CND01C4 etc)
   function detectCategory(row) {
-    // pega alimentador/instalacao e normaliza bem agressivo
     const alim = normalizeKey(row.ALIMENTADOR || row.INSTALACAO_NOVA || "");
   
-    // 1) regra principal: dicionário ALIM_LOOKUP -> subestacao
     const hit = ALIM_LOOKUP.get(alim);
     if (hit?.subestacao) return hit.subestacao;
   
-    // 2) se já veio subestação preenchida (inspeção ou passo 2), usa
     const sub = String(row.SUBESTACAO || "").trim();
     if (sub) return sub;
   
-    // 3) fallback SEM criar pasta por alimentador
     return "Outros";
   }
 
