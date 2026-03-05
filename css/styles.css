@@ -1761,3 +1761,14 @@ input:focus, select:focus{
   height: clamp(380px, 55vh, 520px);
   border-radius: 14px;
 }
+/* Modal Clientes fica abaixo do Detalhes */
+#modalClientes.modal.active { z-index: 2000; }
+
+/* Modal Detalhes sempre acima */
+#modalDetalhes.modal.active { z-index: 3000; }
+
+/* opcional: quando detalhes abrir, "desativa" o modalClientes */
+#modalClientes.is-behind {
+  pointer-events: none;
+  filter: blur(1px);
+}
