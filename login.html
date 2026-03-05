@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login - Reiteradas ENEL</title>
+
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="shortcut icon" href="assets/logo-enel-preview.png?v=2" />
+
+  <!-- Reaproveita seu CSS base -->
+  <link rel="stylesheet" href="css/styles.css" />
+
+  <!-- CSS do login (se você preferir, pode mover pro seu styles.css) -->
+  <style>
+    :root{
+      --login-bg1: #eef6ff;
+      --login-bg2: #ffffff;
+      --login-card: rgba(255,255,255,.85);
+      --login-border: rgba(0,0,0,.08);
+      --login-shadow: 0 20px 70px rgba(0,0,0,.10);
+      --login-radius: 18px;
+      --enel-orange: #ff6a00;
+      --enel-orange2: #ff8c1a;
+      --text-dark: #0f172a;
+      --text-mid: #475569;
+      --danger: #ef4444;
+      --ok: #16a34a;
+    }
+
+    body{
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(1200px 700px at 10% 10%, var(--login-bg1), transparent 60%),
+        radial-gradient(900px 600px at 90% 20%, #f3f7ff, transparent 55%),
+        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 26px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: var(--text-dark);
+    }
+
+    .login-shell{
+      width: 100%;
+      max-width: 980px;
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+    }
+
+    @media (max-width: 900px){
+      .login-shell{ grid-template-columns: 1fr; }
+    }
+
+    .brand-card{
+      border-radius: var(--login-radius);
+      box-shadow: var(--login-shadow);
+      border: 1px solid var(--login-border);
+      background: linear-gradient(135deg, rgba(255,255,255,.92), rgba(255,255,255,.80));
+      padding: 26px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-card::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      background: radial-gradient(600px 300px at 15% 20%, rgba(255,106,0,.18), transparent 60%),
+                  radial-gradient(500px 260px at 85% 15%, rgba(0,115,255,.15), transparent 65%);
+      pointer-events:none;
+    }
+
+    .brand-top{
+      display:flex;
+      align-items:center;
+      gap: 14px;
+      position: relative;
+    }
+
+    .brand-logo{
+      width: 92px;
+      height: 38px;
+      object-fit: contain;
+      filter: drop-shadow(0 8px 16px rgba(0,0,0,.08));
+    }
+
+    .brand-title{
+      display:flex;
+      flex-direction:column;
+      gap: 2px;
+    }
+
+    .brand-title h1{
+      margin:0;
+      font-size: 20px;
+      letter-spacing: .2px;
+    }
+
+    .brand-title p{
+      margin:0;
+      font-size: 13px;
+      color: var(--text-mid);
+      font-weight: 600;
+    }
+
+    .brand-hero{
+      margin-top: 22px;
+      position: relative;
+    }
+
+    .hero-badge{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255,106,0,.10);
+      border: 1px solid rgba(255,106,0,.22);
+      border-radius: 999px;
+      font-weight: 800;
+      color: #9a3412;
+      font-size: 12px;
+    }
+
+    .hero-badge .dot{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--enel-orange), var(--enel-orange2));
+      box-shadow: 0 6px 16px rgba(255,106,0,.35);
+    }
+
+    .hero-text{
+      margin-top: 14px;
+      font-size: 15px;
+      color: var(--text-mid);
+      line-height: 1.55;
+      font-weight: 650;
+      max-width: 520px;
+    }
+
+    .hero-list{
+      margin-top: 16px;
+      display:grid;
+      gap: 10px;
+    }
+
+    .hero-item{
+      display:flex;
+      gap: 10px;
+      align-items:flex-start;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,.06);
+      background: rgba(255,255,255,.7);
+      position: relative;
+    }
+
+    .hero-ic{
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: rgba(0,115,255,.08);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight: 900;
+      color: #1d4ed8;
+      flex: 0 0 auto;
+    }
+
+    .hero-item b{
+      display:block;
+      font-size: 13px;
+      margin-bottom: 2px;
+    }
+
+    .hero-item span{
+      font-size: 12px;
+      color: var(--text-mid);
+      font-weight: 650;
+    }
+
+    .login-card{
+      border-radius: var(--login-radius);
+      box-shadow: var(--login-shadow);
+      border: 1px solid var(--login-border);
+      background: var(--login-card);
+      backdrop-filter: blur(10px);
+      padding: 22px;
+    }
+
+    .login-card h2{
+      margin:0 0 6px 0;
+      font-size: 18px;
+      letter-spacing: .2px;
+    }
+
+    .login-card p{
+      margin:0 0 14px 0;
+      font-size: 13px;
+      color: var(--text-mid);
+      font-weight: 650;
+      line-height: 1.45;
+    }
+
+    .role-grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .role-btn{
+      border-radius: 14px;
+      padding: 12px 12px;
+      border: 1px solid rgba(0,0,0,.08);
+      background: rgba(255,255,255,.82);
+      cursor: pointer;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+      user-select: none;
+    }
+
+    .role-btn:hover{
+      transform: translateY(-1px);
+      border-color: rgba(255,106,0,.35);
+      box-shadow: 0 10px 22px rgba(0,0,0,.08);
+    }
+
+    .role-btn.active{
+      border-color: rgba(255,106,0,.65);
+      background: rgba(255,106,0,.10);
+      box-shadow: 0 12px 26px rgba(255,106,0,.14);
+    }
+
+    .role-ic{
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight: 900;
+      color: white;
+      flex: 0 0 auto;
+      background: linear-gradient(135deg, var(--enel-orange), var(--enel-orange2));
+      box-shadow: 0 10px 22px rgba(255,106,0,.25);
+    }
+
+    .role-text{
+      display:flex;
+      flex-direction:column;
+      gap: 1px;
+      text-align:left;
+    }
+
+    .role-text b{ font-size: 13px; }
+    .role-text span{ font-size: 12px; color: var(--text-mid); font-weight: 650; }
+
+    .form{
+      display:grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap: 6px;
+    }
+
+    .field label{
+      font-size: 12px;
+      font-weight: 850;
+      color: var(--text-mid);
+    }
+
+    .field input{
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,.10);
+      padding: 0 12px;
+      font-size: 14px;
+      font-weight: 700;
+      outline: none;
+      background: rgba(255,255,255,.90);
+    }
+
+    .field input:focus{
+      border-color: rgba(255,106,0,.65);
+      box-shadow: 0 0 0 4px rgba(255,106,0,.15);
+    }
+
+    .actions{
+      display:flex;
+      flex-direction:column;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    .btn-primary{
+      height: 44px;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      font-weight: 900;
+      letter-spacing: .3px;
+      color: white;
+      background: linear-gradient(135deg, var(--enel-orange), var(--enel-orange2));
+      box-shadow: 0 16px 28px rgba(255,106,0,.22);
+      transition: transform .12s ease, filter .12s ease;
+    }
+
+    .btn-primary:hover{
+      transform: translateY(-1px);
+      filter: brightness(1.02);
+    }
+
+    .btn-link{
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      color: #1d4ed8;
+      font-weight: 850;
+      text-decoration: underline;
+      font-size: 12px;
+      padding: 0;
+      align-self: flex-start;
+    }
+
+    .error{
+      display:none;
+      border-radius: 14px;
+      border: 1px solid rgba(239,68,68,.35);
+      background: rgba(239,68,68,.10);
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #991b1b;
+      line-height: 1.35;
+    }
+
+    .error.show{ display:block; }
+
+    .mini{
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-mid);
+      font-weight: 650;
+      line-height: 1.35;
+    }
+
+    .topbar{
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      display:flex;
+      gap: 10px;
+      align-items:center;
+      z-index: 5;
+    }
+
+    .topbar a{
+      font-size: 12px;
+      font-weight: 900;
+      color: #1d4ed8;
+      text-decoration: none;
+      background: rgba(255,255,255,.75);
+      border: 1px solid rgba(0,0,0,.06);
+      padding: 8px 12px;
+      border-radius: 999px;
+      box-shadow: 0 10px 22px rgba(0,0,0,.08);
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="topbar">
+    <a href="index.html">🏠 Página inicial</a>
+  </div>
+
+  <div class="login-shell">
+
+    <!-- Lado esquerdo: branding -->
+    <section class="brand-card" aria-label="Informações do sistema">
+      <div class="brand-top">
+        <img class="brand-logo" src="assets/logo-enel-preview.png?v=2" alt="ENEL" />
+        <div class="brand-title">
+          <h1>Reiteradas ENEL</h1>
+          <p>Painel de acompanhamento • Admin & Inspetores</p>
+        </div>
+      </div>
+
+      <div class="brand-hero">
+        <div class="hero-badge">
+          <span class="dot"></span>
+          Acesso por perfil (Admin / Inspetor)
+        </div>
+
+        <div class="hero-text">
+          Faça login no perfil correto para visualizar o painel, filtrar por regional/data e registrar retornos do inspetor.
+        </div>
+
+        <div class="hero-list">
+          <div class="hero-item">
+            <div class="hero-ic">A</div>
+            <div>
+              <b>ADMIN</b>
+              <span>Upload de planilhas, histórico e retornos dos inspetores.</span>
+            </div>
+          </div>
+
+          <div class="hero-item">
+            <div class="hero-ic">I</div>
+            <div>
+              <b>INSPETOR</b>
+              <span>Filtra reiteradas e envia retorno por ocorrência.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lado direito: login -->
+    <section class="login-card" aria-label="Login">
+      <h2>Acesso</h2>
+      <p>Selecione o perfil e informe suas credenciais.</p>
+
+      <div class="role-grid">
+        <button id="roleAdmin" class="role-btn" type="button" aria-pressed="false">
+          <div class="role-ic">A</div>
+          <div class="role-text">
+            <b>ADMIN</b>
+            <span>Gestão e relatórios</span>
+          </div>
+        </button>
+
+        <button id="roleInspetor" class="role-btn" type="button" aria-pressed="false">
+          <div class="role-ic">I</div>
+          <div class="role-text">
+            <b>INSPETOR</b>
+            <span>Operação em campo</span>
+          </div>
+        </button>
+      </div>
+
+      <div id="loginError" class="error"></div>
+
+      <form id="loginForm" class="form" autocomplete="on">
+        <div class="field">
+          <label for="email">E-mail</label>
+          <input type="email" id="email" required autocomplete="username" placeholder="seuemail@enel.com" />
+        </div>
+
+        <div class="field">
+          <label for="senha">Senha</label>
+          <input type="password" id="senha" required autocomplete="current-password" placeholder="••••••••" />
+        </div>
+
+        <div class="actions">
+          <button id="btnEntrar" class="btn-primary" type="submit">Entrar</button>
+          <button id="btnLimpar" class="btn-link" type="button">Limpar</button>
+        </div>
+
+        <div class="mini">
+          Dica: o perfil selecionado fica salvo neste navegador para evitar confusão ao recarregar.
+        </div>
+      </form>
+    </section>
+
+  </div>
+
+  <!-- Firebase e scripts do seu projeto -->
+  <script type="module" src="js/firebase-config.js"></script>
+  <script type="module" src="js/services/firebase-service.js"></script>
+  <script type="module" src="js/login.js"></script>
+</body>
+</html>

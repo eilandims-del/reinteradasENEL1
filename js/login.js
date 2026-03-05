@@ -1,102 +1,125 @@
 // js/login.js
 import { AuthService } from './services/firebase-service.js';
-import { showToast } from './utils/helpers.js';
 
-const ADMIN_TARGET = 'admin.html';
-const INSPETOR_TARGET = 'inspetor.html';
+const ROLE_KEY = 'enel_role_selected'; // "ADMIN" | "INSPETOR"
+const DEFAULT_ROLE = 'INSPETOR';
 
-// (opcional) lista simples para forçar rota admin, se quiser.
-// Se vazio, a rota depende do perfil selecionado.
-const ADMIN_EMAILS = new Set([
-  // 'eneladmin@enel.com'
-]);
+// destinos
+const ROUTE = {
+  ADMIN: 'admin.html',
+  INSPETOR: 'inspetor.html'
+};
 
-function pickDefaultRole() {
-  // padrão: INSPETOR
-  return 'INSPETOR';
+function $(id){ return document.getElementById(id); }
+
+function setError(msg) {
+  const el = $('loginError');
+  if (!el) return;
+  if (!msg) {
+    el.textContent = '';
+    el.classList.remove('show');
+    return;
+  }
+  el.textContent = msg;
+  el.classList.add('show');
 }
 
-function setRoleUI(role) {
-  document.querySelectorAll('.role-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.role === role);
+function setRole(role) {
+  const r = (role === 'ADMIN' || role === 'INSPETOR') ? role : DEFAULT_ROLE;
+  localStorage.setItem(ROLE_KEY, r);
+
+  const btnA = $('roleAdmin');
+  const btnI = $('roleInspetor');
+
+  if (btnA) {
+    btnA.classList.toggle('active', r === 'ADMIN');
+    btnA.setAttribute('aria-pressed', String(r === 'ADMIN'));
+  }
+  if (btnI) {
+    btnI.classList.toggle('active', r === 'INSPETOR');
+    btnI.setAttribute('aria-pressed', String(r === 'INSPETOR'));
+  }
+
+  setError('');
+}
+
+function getRole() {
+  const r = (localStorage.getItem(ROLE_KEY) || '').toUpperCase().trim();
+  return (r === 'ADMIN' || r === 'INSPETOR') ? r : DEFAULT_ROLE;
+}
+
+function redirectByRole(role) {
+  const dest = ROUTE[role] || ROUTE[DEFAULT_ROLE];
+  window.location.href = dest;
+}
+
+async function autoRedirectIfLoggedIn() {
+  // Se já tiver autenticado, manda direto para o painel do perfil selecionado
+  AuthService.onAuthStateChanged((user) => {
+    if (user) {
+      const role = getRole();
+      redirectByRole(role);
+    }
   });
-  document.body.dataset.role = role;
 }
 
-function getSelectedRole() {
-  return document.body.dataset.role || pickDefaultRole();
-}
+function initUI() {
+  setRole(getRole());
 
-function resolveTargetByEmail(email, selectedRole) {
-  const e = String(email || '').trim().toLowerCase();
-  if (ADMIN_EMAILS.has(e)) return ADMIN_TARGET;
+  $('roleAdmin')?.addEventListener('click', () => setRole('ADMIN'));
+  $('roleInspetor')?.addEventListener('click', () => setRole('INSPETOR'));
 
-  // heurística: se escolher ADMIN, vai admin.
-  if (selectedRole === 'ADMIN') return ADMIN_TARGET;
-  return INSPETOR_TARGET;
-}
+  $('btnLimpar')?.addEventListener('click', () => {
+    $('email').value = '';
+    $('senha').value = '';
+    $('email')?.focus();
+    setError('');
+  });
 
-async function redirectIfLoggedIn() {
-  const u = AuthService.getCurrentUser();
-  if (!u) return;
+  $('loginForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setError('');
 
-  // se já logado, manda pro inspetor por padrão (ou admin se cair na lista)
-  const target = resolveTargetByEmail(u.email, 'INSPETOR');
-  window.location.href = target;
-}
+    const email = String($('email')?.value || '').trim();
+    const senha = String($('senha')?.value || '').trim();
+    const role = getRole();
 
-async function handleLogin(e) {
-  e?.preventDefault();
-
-  const email = document.getElementById('email')?.value || '';
-  const senha = document.getElementById('senha')?.value || '';
-  const errorDiv = document.getElementById('loginError');
-
-  errorDiv?.classList.remove('show');
-  if (errorDiv) errorDiv.textContent = '';
-
-  const role = getSelectedRole();
-
-  try {
-    const result = await AuthService.login(email, senha);
-
-    if (!result?.success) {
-      const msg = result?.error || 'Erro ao fazer login';
-      if (errorDiv) {
-        errorDiv.textContent = msg;
-        errorDiv.classList.add('show');
-      }
-      showToast('Erro ao fazer login. Verifique suas credenciais.', 'error');
+    if (!role) {
+      setError('Selecione um perfil (ADMIN ou INSPETOR).');
+      return;
+    }
+    if (!email || !senha) {
+      setError('Informe e-mail e senha.');
       return;
     }
 
-    showToast('Login realizado com sucesso!', 'success');
-
-    const target = resolveTargetByEmail(email, role);
-    window.location.href = target;
-  } catch (err) {
-    const msg = err?.message || String(err);
-    if (errorDiv) {
-      errorDiv.textContent = msg;
-      errorDiv.classList.add('show');
+    // trava botão
+    const btn = $('btnEntrar');
+    const oldTxt = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
     }
-    showToast('Falha no login.', 'error');
-  }
+
+    const res = await AuthService.login(email, senha);
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = oldTxt || 'Entrar';
+    }
+
+    if (!res?.success) {
+      setError(res?.error || 'Falha ao fazer login. Verifique as credenciais.');
+      return;
+    }
+
+    redirectByRole(role);
+  });
 }
 
-function init() {
-  // role ui
-  setRoleUI(pickDefaultRole());
-  document.querySelectorAll('.role-btn').forEach(btn => {
-    btn.addEventListener('click', () => setRoleUI(btn.dataset.role));
-  });
-
-  document.getElementById('loginForm')?.addEventListener('submit', handleLogin);
-
-  // se já estiver logado, redireciona
-  AuthService.onAuthStateChanged(() => {
-    redirectIfLoggedIn();
-  });
+function init(){
+  initUI();
+  autoRedirectIfLoggedIn();
 }
 
 if (document.readyState === 'loading') {
