@@ -20,7 +20,7 @@ const ALIM_TREE = {
       "Trairi": ["TRR01P1","TRR01P2","TRR01P3","TRR01P4"],
       "Paraipaba": ["PAR01C2","PAR01C3","PAR01C4","PAR01C5","PAR01C6","PAR01C7"],
       "Paracuru": ["PCU01L2","PCU01L3","PCU01L4","PCU01L5"]
-    },
+    }
   },
 
 "NORTE": {
@@ -268,11 +268,13 @@ function buildKml(rows, idx) {
   function detectCategory(row) {
     const alim = normalizeKey(row.ALIMENTADOR || row.INSTALACAO_NOVA || "");
   
+    // 1) alimentador manda
     const hit = ALIM_LOOKUP.get(alim);
     if (hit?.subestacao) return hit.subestacao;
   
+    // 2) só aceita SUBESTACAO se tiver cara de nome (não sigla 3 letras)
     const sub = String(row.SUBESTACAO || "").trim();
-    if (sub) return sub;
+    if (sub && sub.length > 3) return sub;
   
     return "Outros";
   }
@@ -429,7 +431,8 @@ for (const r of ins) {
 for (const r of rei) {
   const alim = normalizeKey(r.ALIMENTADOR || r.INSTALACAO_NOVA || "");
 
-  r.SUBESTACAO = alimToSub.get(alim) || "";
+  const hit = ALIM_LOOKUP.get(alim);
+  r.SUBESTACAO = hit?.subestacao || alimToSub.get(alim) || "";
 }
 
   mergedRows = mergeAndDiff(ins, rei);
