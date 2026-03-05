@@ -1,19 +1,21 @@
 /**
  * Script do Painel Administrativo
  *
- * ✅ Esta versão adiciona um SEGUNDO upload independente:
- * - Upload Reiteradas (planilha com coluna ÁREA para distribuir 3 regionais)
- * - Upload Clientes Afetados (planilha separada) -> salva em outra coleção
+ * ✅ Uploads:
+ * - Reiteradas (planilha com coluna ÁREA)
+ * - Clientes Afetados (planilha separada) -> salva em outra coleção
  *
- * Requisitos (Clientes):
- * - Deve conter a coluna "CLI. AFE" (ou variações: CLI AFE / CLI. AFET)
- * - Coluna ÁREA/AREA/REGIONAL é opcional (se existir, mapeia a regional; se não, salva como "GERAL")
+ * ✅ Admin - Inspetores:
+ * - Botão "Inspetores" abre modal com retornos
+ * - Filtra por regional + período (client-side)
+ * - Exporta XLSX / Copiar
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
 import { parseFile } from './utils/file-parser.js?v=20260304-1';
 import { showToast } from './utils/helpers.js';
 import { municipioToRegional } from './utils/regional-municipio.js';
+import { openModal, closeModal } from './components/modal.js';
 
 let currentUser = null;
 
@@ -25,6 +27,7 @@ const UPLOADS = [
 
 function init() {
   initEventListeners();
+  initInspetoresAdminUI(); // ✅ ativa o modal Inspetores
   checkAuthState();
 }
 
@@ -107,6 +110,222 @@ function initEventListeners() {
   }
 }
 
+/* =========================
+   ADMIN - MODAL INSPETORES
+========================= */
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function fmtBR(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = String(iso).split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
+function sanitizeOneLine(v) {
+  return String(v ?? '').replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
+}
+
+function setTotal(n) {
+  const el = document.getElementById('inspetoresTotal');
+  if (el) el.textContent = `Retornos: ${Number(n || 0)}`;
+}
+
+function renderRetornosList(rows) {
+  const container = document.getElementById('inspetoresLista');
+  if (!container) return;
+
+  const items = Array.isArray(rows) ? rows : [];
+  setTotal(items.length);
+
+  if (!items.length) {
+    container.innerHTML =
+      '<p style="text-align:center; padding: 2rem; color: var(--medium-gray);">Nenhum retorno encontrado.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  items.forEach((r, idx) => {
+    const div = document.createElement('div');
+    div.className = 'ranking-item';
+    div.style.cursor = 'default';
+
+    const incidencia = sanitizeOneLine(r.incidencia || '—');
+    const elemento = sanitizeOneLine(r.elemento || '—');
+    const causa = sanitizeOneLine(r.causa || '—');
+    const cli = sanitizeOneLine(r.clienteAfetado || '—');
+    const regional = sanitizeOneLine(r.regional || r.REGIONAL || '—');
+    const dataRef = fmtBR(r.dataRef);
+    const insp = sanitizeOneLine(r.inspectorEmail || '—');
+    const txt = sanitizeOneLine(r.retornoTexto || '');
+
+    div.innerHTML = `
+      <span class="ranking-item-position">${idx + 1}º</span>
+      <span class="ranking-item-name" style="display:flex; flex-direction:column; gap:4px;">
+        <span><b>${elemento}</b> • Inc: ${incidencia} • ${regional} • ${dataRef}</span>
+        <span style="color: var(--medium-gray); font-weight:700;">Cli: ${cli} • Causa: ${causa}</span>
+        <span style="white-space: pre-wrap; font-weight:800;">Retorno: ${txt || '—'}</span>
+        <span style="color: var(--medium-gray); font-weight:700;">Inspetor: ${insp}</span>
+      </span>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function buildCopyText(rows) {
+  const items = Array.isArray(rows) ? rows : [];
+  if (!items.length) return 'Sem retornos.';
+
+  const lines = [];
+  lines.push(`RETORNOS DOS INSPETORES (${items.length})`);
+  lines.push('---------------------------');
+
+  for (const r of items) {
+    lines.push(
+      `• ${sanitizeOneLine(r.regional || r.REGIONAL || '—')} • ${fmtBR(r.dataRef)} • Inc ${sanitizeOneLine(r.incidencia)} • ${sanitizeOneLine(r.elemento)}`
+    );
+    lines.push(`  Cliente: ${sanitizeOneLine(r.clienteAfetado)}`);
+    lines.push(`  Causa: ${sanitizeOneLine(r.causa)}`);
+    lines.push(`  Retorno: ${sanitizeOneLine(r.retornoTexto)}`);
+    lines.push(`  Inspetor: ${sanitizeOneLine(r.inspectorEmail)}`);
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return { success: true };
+  } catch (_) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }
+}
+
+function exportToXlsx(rows) {
+  if (!window.XLSX) {
+    alert('XLSX não carregado. Verifique o CDN do SheetJS no admin.html.');
+    return;
+  }
+
+  const items = Array.isArray(rows) ? rows : [];
+  if (!items.length) {
+    alert('Sem retornos para exportar.');
+    return;
+  }
+
+  const header = [
+    'REGIONAL', 'DATA_REF', 'INCIDENCIA', 'ELEMENTO', 'CLIENTE_AFETADO', 'CAUSA',
+    'RETORNO', 'INSPETOR_EMAIL', 'CREATED_AT', 'UPDATED_AT'
+  ];
+
+  const aoa = [header];
+
+  items.forEach(r => {
+    aoa.push([
+      r.regional || r.REGIONAL || '',
+      r.dataRef || '',
+      r.incidencia || '',
+      r.elemento || '',
+      r.clienteAfetado || '',
+      r.causa || '',
+      r.retornoTexto || '',
+      r.inspectorEmail || '',
+      r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toISOString() : '',
+      r.updatedAt?.seconds ? new Date(r.updatedAt.seconds * 1000).toISOString() : ''
+    ]);
+  });
+
+  const ws = window.XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = header.map((h, i) => {
+    let max = h.length;
+    for (let r = 1; r < aoa.length; r++) max = Math.max(max, String(aoa[r][i] || '').length);
+    return { wch: Math.min(Math.max(max + 2, 12), 60) };
+  });
+
+  const wb = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb, ws, 'Retornos');
+
+  const now = new Date();
+  const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}${pad2(now.getMinutes())}`;
+  window.XLSX.writeFile(wb, `Retornos_Inspetores_${stamp}.xlsx`);
+}
+
+function initInspetoresAdminUI() {
+  const btnOpen = document.getElementById('btnInspetores');
+  const btnClose = document.getElementById('fecharModalInspetores');
+  const btnLoad = document.getElementById('btnCarregarRetornos');
+  const btnCopy = document.getElementById('btnCopiarRetornos');
+  const btnExport = document.getElementById('btnExportRetornos');
+
+  const selReg = document.getElementById('inspReg');
+  const di = document.getElementById('inspDataIni');
+  const df = document.getElementById('inspDataFim');
+
+  // se o admin.html ainda não tem o modal, não quebra
+  if (!btnOpen || !selReg || !di || !df) return;
+
+  if (!di.value) di.value = todayISO();
+  if (!df.value) df.value = todayISO();
+
+  let lastRows = [];
+
+  const load = async () => {
+    const regional = selReg?.value || 'TODOS';
+    const dataInicial = di?.value || '';
+    const dataFinal = df?.value || '';
+
+    const res = await DataService.getRetornosAdminFiltrado({ regional, dataInicial, dataFinal });
+    if (!res?.success) {
+      alert(`Erro ao carregar retornos: ${res?.error || 'Falha desconhecida'}`);
+      lastRows = [];
+      renderRetornosList([]);
+      return;
+    }
+
+    lastRows = res.data || [];
+    renderRetornosList(lastRows);
+  };
+
+  btnOpen.addEventListener('click', async () => {
+    openModal('modalInspetores');
+    await load();
+  });
+
+  btnClose?.addEventListener('click', () => closeModal('modalInspetores'));
+  btnLoad?.addEventListener('click', load);
+
+  btnCopy?.addEventListener('click', async () => {
+    const text = buildCopyText(lastRows);
+    const r = await copyToClipboard(text);
+    alert(r.success ? 'Retornos copiados!' : `Erro ao copiar: ${r.error || 'falha'}`);
+  });
+
+  btnExport?.addEventListener('click', () => exportToXlsx(lastRows));
+}
+
+/* =========================
+   Auth handlers
+========================= */
+
 async function handleLogin() {
   const email = document.getElementById('email')?.value || '';
   const senha = document.getElementById('senha')?.value || '';
@@ -138,6 +357,7 @@ async function handleLogout() {
 /* =========================
    Helpers: ÁREA/REGIONAL
 ========================= */
+
 function normalizeFieldName(name) {
   return String(name || '')
     .trim()
@@ -170,107 +390,19 @@ function normalizeAreaToRegional(areaRaw) {
   return '';
 }
 
-function normTxt(s) {
-  return String(s || '')
-    .trim()
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\./g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Mapeamento Município -> Regional (com prioridade CENTRO NORTE para municípios que aparecem duplicados)
-const MUNICIPIO_TO_REGIONAL = (() => {
-  const map = new Map();
-
-  const addMany = (regional, list) => {
-    for (const m of list) map.set(normTxt(m), regional);
-  };
-
-  // ATLÂNTICO
-  addMany('ATLANTICO', [
-    'ITAREMA','JIJOCA DE JERICOACOARA','J DE JERICOACOARA','MARCO','CAMOCIM','CRUZ','BELA CRUZ','MORRINHOS','ACARAU',
-    'ITAPIPOCA','AMONTADA','URUBURETAMA','TURURU',
-    'PARAIPABA','PARACURU','TRAIRI',
-    'TEJUSSUOCA','PENTECOSTE','APUIARES','IRAUCUBA','UMIRIM','ITAPAJE','SAO LUIS DO CURU','S LUIS DO CURU','SAO GONCALO DO AMARANTE'
-  ]);
-
-  // NORTE
-  addMany('NORTE', [
-    'BARROQUINHA','CHAVAL','CAMOCIM','GRANJA','MARTINOPOLE','URUOCA','SENADOR SA','MORAUJO',
-    'MASSAPE','MERUOCA','ALCANTARAS','COREAU','FRECHEIRINHA','TIANGUA','VICOSA DO CEARA','UBAJARA',
-    'IBIAPINA','SAO BENEDITO','CARNAUBAL','GUARACIABA DO NORTE','CROATA','MUCAMBO','PACUJA','GRACA',
-    'SOBRAL','FORQUILHA','GROAIRAS','CARIRE'
-  ]);
-
-  // CENTRO NORTE (vai sobrescrever se município também estiver em NORTE)
-  addMany('CENTRO NORTE', [
-    'CANINDE','CARIDADE','ITATIRA','PARAMOTI','BOA VIAGEM','MADALENA',
-    'CRATEUS','INDEPENDENCIA','NOVO ORIENTE','IPAPORANGA',
-    'NOVA RUSSAS','HIDROLANDIA','IPU','IPUEIRAS','MONSENHOR TABOSA','PORANGA','RERIUTABA','SANTA QUITERIA','STA QUITERIA',
-    'TAMBORIL','VARJOTA','PIRES FERREIRA','ARARENDA','CATUNDA',
-    'QUIXADA','QUIXERAMOBIM','BANABUIU','IBARETAMA','CHORO'
-  ]);
-
-  return map;
-})();
-
-function getRegionalFromMunicipio(municipioRaw) {
-  const m = normTxt(municipioRaw);
-  if (!m) return '';
-  return MUNICIPIO_TO_REGIONAL.get(m) || '';
-}
-
-// Escolhe regional: primeiro tenta ÁREA/REGIONAL da planilha, senão usa MUNICIPIO
-function resolveRegionalCliente(row) {
-  const direct = pickRegionalFromRow(row);
-  if (direct) return direct;
-
-  const mun = row?.MUNICIPIO ?? row?.['MUNICÍPIO'] ?? '';
-  const byMun = getRegionalFromMunicipio(mun);
-  return byMun || 'GERAL';
-}
-
-function pickRegionalFromRow(row) {
-  if (!row || typeof row !== 'object') return '';
-
-  const direct =
-    row['ÁREA'] ?? row['AREA'] ?? row.AREA ?? row.area ??
-    row['REGIONAL'] ?? row.REGIONAL ?? row.regional;
-
-  const reg = normalizeAreaToRegional(direct);
-  if (reg) return reg;
-
-  // fallback: procura chaves equivalentes
-  const keys = Object.keys(row);
-  const kArea = keys.find(k => normalizeFieldName(k) === 'AREA');
-  if (kArea != null) {
-    const r2 = normalizeAreaToRegional(row[kArea]);
-    if (r2) return r2;
-  }
-
-  const kReg = keys.find(k => normalizeFieldName(k) === 'REGIONAL');
-  if (kReg != null) {
-    const r3 = normalizeAreaToRegional(row[kReg]);
-    if (r3) return r3;
-  }
-
-  return '';
-}
 /* =========================
    Roteamento de upload
 ========================= */
+
 async function routeUploadByType(file, key, uiKey) {
   if (key === 'CLIENTES') return handleClientesUpload(file, uiKey);
-  // padrão: reiteradas (GERAL)
   return handleReiteradasUpload(file, key, uiKey);
 }
 
 /* =========================
    Upload REITERADAS (GERAL)
 ========================= */
+
 async function handleReiteradasUpload(file, regionalKey, uiKey) {
   const uploadProgress = document.getElementById(`uploadProgress_${uiKey}`);
   const progressFill = document.getElementById(`progressFill_${uiKey}`);
@@ -312,12 +444,7 @@ async function handleReiteradasUpload(file, regionalKey, uiKey) {
       const areaVal = row?.AREA ?? row?.['ÁREA'] ?? row?.area ?? row?.Area ?? '';
       const reg = normalizeAreaToRegional(areaVal);
 
-      return {
-        ...row,
-        REGIONAL: reg,
-        regional: reg,
-        AREA: areaVal
-      };
+      return { ...row, REGIONAL: reg, regional: reg, AREA: areaVal };
     });
 
     const okCount = enriched.filter(r => !!r.REGIONAL).length;
@@ -363,32 +490,30 @@ async function handleReiteradasUpload(file, regionalKey, uiKey) {
 
     const saveResult = await DataService.saveData(enriched, metadata, updateProgress);
 
-    if (saveResult.success) {
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Concluído! (3 regionais)';
+    if (!saveResult.success) throw new Error(saveResult.error || 'Erro ao salvar dados');
 
-      uploadResult.className = 'upload-result success';
-      uploadResult.innerHTML = `
-        <strong>✓ Upload realizado com sucesso!</strong><br>
-        Tipo: Reiteradas (Geral via ÁREA)<br>
-        Arquivo: ${file.name}<br>
-        Registros processados: ${saveResult.count}<br>
-        Colunas: ${parsed.headers.length}
-      `;
-      uploadResult.style.display = 'block';
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Concluído! (3 regionais)';
 
-      showToast(`Upload concluído (REITERADAS): ${saveResult.count} registro(s).`, 'success');
+    uploadResult.className = 'upload-result success';
+    uploadResult.innerHTML = `
+      <strong>✓ Upload realizado com sucesso!</strong><br>
+      Tipo: Reiteradas (Geral via ÁREA)<br>
+      Arquivo: ${file.name}<br>
+      Registros processados: ${saveResult.count}<br>
+      Colunas: ${parsed.headers.length}
+    `;
+    uploadResult.style.display = 'block';
 
-      const input = document.getElementById(`fileInput_${uiKey}`);
-      if (input) input.value = '';
+    showToast(`Upload concluído (REITERADAS): ${saveResult.count} registro(s).`, 'success');
 
-      setTimeout(() => {
-        loadUploadHistory(regionalKey, uiKey);
-        uploadProgress.style.display = 'none';
-      }, 1200);
-    } else {
-      throw new Error(saveResult.error || 'Erro ao salvar dados');
-    }
+    const input = document.getElementById(`fileInput_${uiKey}`);
+    if (input) input.value = '';
+
+    setTimeout(() => {
+      loadUploadHistory(regionalKey, uiKey);
+      uploadProgress.style.display = 'none';
+    }, 1200);
 
   } catch (error) {
     console.error('[ADMIN] Erro no upload (REITERADAS):', error);
@@ -405,6 +530,7 @@ async function handleReiteradasUpload(file, regionalKey, uiKey) {
 /* =========================
    Upload CLIENTES AFETADOS
 ========================= */
+
 async function handleClientesUpload(file, uiKey) {
   const uploadProgress = document.getElementById(`uploadProgress_${uiKey}`);
   const progressFill = document.getElementById(`progressFill_${uiKey}`);
@@ -428,45 +554,56 @@ async function handleClientesUpload(file, uiKey) {
   progressText.textContent = 'Lendo arquivo...';
   progressText.style.color = '';
 
+  // ✅ progress callback local (era o bug: updateProgress não existia aqui)
+  const updateProgressClientes = (progressInfo) => {
+    const p = progressInfo.progress ?? 0;
+    progressFill.style.width = `${70 + (p * 0.3)}%`;
+
+    if (progressInfo.retrying) {
+      progressText.textContent = `Retry (${progressInfo.retryCount})... ${progressInfo.nextRetryIn}s`;
+      progressText.style.color = 'var(--warning)';
+    } else {
+      progressText.textContent =
+        `Batch ${progressInfo.batch}/${progressInfo.totalBatches}... ` +
+        `(${progressInfo.saved}/${progressInfo.total} - ${p}%)`;
+      progressText.style.color = '';
+    }
+  };
+
   try {
     progressFill.style.width = '25%';
     progressText.textContent = 'Processando arquivo...';
 
     const parsed = await parseFile(file, { dataset: 'CLIENTES' });
 
-    // 🔥 transforma CLIENTES: top 10 por regional
     const rows = Array.isArray(parsed.data) ? parsed.data : [];
     if (!rows.length) throw new Error('Nenhuma linha válida encontrada (CLIENTES).');
 
-    // 1) normaliza, calcula regional pelo MUNICIPIO, remove OBS CC
+    // normaliza e define regional pelo município
     const normalized = rows.map(r => {
       const municipio = r.MUNICIPIO || r['MUNICÍPIO'] || '';
       const reg = municipioToRegional(municipio) || 'GERAL';
 
       const drop = { ...r };
-      // remove campos “pesados”/indesejados
+
+      // remove campos pesados
       const DROP_FIELDS = ['OBSERVACAO CC', 'OBSERVAÇÃO CC', 'CC'];
-      for (const f of DROP_FIELDS) {
-        if (f in drop) delete drop[f];
-      }
-      // se vier como chave diferente, remove por startsWith OBSERVACAO
+      for (const f of DROP_FIELDS) if (f in drop) delete drop[f];
+
       for (const k of Object.keys(drop)) {
-        const kk = String(k).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        const kk = String(k).toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         if (kk.startsWith('OBSERVACAO')) delete drop[k];
+        if (kk.startsWith('OBSERVAÇÃO')) delete drop[k];
       }
 
-      return {
-        ...drop,
-        REGIONAL: reg,
-        regional: reg
-      };
+      return { ...drop, REGIONAL: reg, regional: reg };
     });
 
-    // 2) conta por REGIONAL + NUM_CLIENTE
+    // TOP 10 por regional
     const getNumCliente = (row) =>
       String(row.NUM_CLIENTE || row['Nº CLIENTE'] || row['NUM CLIENTE'] || '').trim();
 
-    const counts = new Map(); // key: `${REGIONAL}||${NUM}`
+    const counts = new Map(); // `${REGIONAL}||${NUM}`
     for (const r of normalized) {
       const num = getNumCliente(r);
       const reg = String(r.REGIONAL || 'GERAL');
@@ -475,14 +612,13 @@ async function handleClientesUpload(file, uiKey) {
       counts.set(key, (counts.get(key) || 0) + 1);
     }
 
-    // 3) top 10 por regional
-    function topNByRegional(regional, n=10) {
+    function topNByRegional(regional, n = 10) {
       const items = [];
       for (const [k, c] of counts.entries()) {
         const [reg, num] = k.split('||');
         if (reg === regional) items.push({ num, count: c });
       }
-      items.sort((a,b) => b.count - a.count);
+      items.sort((a, b) => b.count - a.count);
       return items.slice(0, n).map(x => x.num);
     }
 
@@ -490,7 +626,6 @@ async function handleClientesUpload(file, uiKey) {
     const topCentro = new Set(topNByRegional('CENTRO NORTE', 10));
     const topAtlantico = new Set(topNByRegional('ATLANTICO', 10));
 
-    // 4) filtra linhas somente desses top 10
     const filtered = normalized.filter(r => {
       const num = getNumCliente(r);
       const reg = String(r.REGIONAL || 'GERAL');
@@ -498,7 +633,7 @@ async function handleClientesUpload(file, uiKey) {
       if (reg === 'NORTE') return topNorte.has(num);
       if (reg === 'CENTRO NORTE') return topCentro.has(num);
       if (reg === 'ATLANTICO') return topAtlantico.has(num);
-      return false; // GERAL não entra na regra
+      return false;
     });
 
     if (!filtered.length) {
@@ -506,7 +641,7 @@ async function handleClientesUpload(file, uiKey) {
     }
 
     progressFill.style.width = '55%';
-    progressText.textContent = `Preparando upload filtrado (TOP 10 por regional)... (${filtered.length} linha(s))`;
+    progressText.textContent = `Preparando upload filtrado (TOP 10/regional)... (${filtered.length} linha(s))`;
 
     const uploadId = DataService.generateUploadId();
 
@@ -521,7 +656,6 @@ async function handleClientesUpload(file, uiKey) {
       totalColumns: parsed.headers.length,
       columns: parsed.headers,
       uploadedAt: new Date().toISOString(),
-      // opcional: guardar top 10 pra auditoria
       top10: {
         NORTE: Array.from(topNorte),
         'CENTRO NORTE': Array.from(topCentro),
@@ -530,35 +664,32 @@ async function handleClientesUpload(file, uiKey) {
     };
 
     progressFill.style.width = '70%';
-    progressText.textContent = 'Salvando no banco (CLIENTES filtrado TOP 10/regional)...';
+    progressText.textContent = 'Salvando no banco (CLIENTES TOP 10/regional)...';
 
-    const saveResult = await DataService.saveClientesData(filtered, metadata, updateProgress);
+    const saveResult = await DataService.saveClientesData(filtered, metadata, updateProgressClientes);
+    if (!saveResult.success) throw new Error(saveResult.error || 'Erro ao salvar dados');
 
-    if (saveResult.success) {
-      progressFill.style.width = '100%';
-      progressText.textContent = 'Concluído! (CLIENTES)';
+    progressFill.style.width = '100%';
+    progressText.textContent = 'Concluído! (CLIENTES)';
 
-      uploadResult.className = 'upload-result success';
-      uploadResult.innerHTML = `
-        <strong>✓ Upload de CLIENTES realizado com sucesso!</strong><br>
-        Arquivo: ${file.name}<br>
-        Registros processados: ${saveResult.count}<br>
-        Colunas: ${parsed.headers.length}
-      `;
-      uploadResult.style.display = 'block';
+    uploadResult.className = 'upload-result success';
+    uploadResult.innerHTML = `
+      <strong>✓ Upload de CLIENTES realizado com sucesso!</strong><br>
+      Arquivo: ${file.name}<br>
+      Registros processados: ${saveResult.count}<br>
+      Colunas: ${parsed.headers.length}
+    `;
+    uploadResult.style.display = 'block';
 
-      showToast(`Upload concluído (CLIENTES): ${saveResult.count} registro(s).`, 'success');
+    showToast(`Upload concluído (CLIENTES): ${saveResult.count} registro(s).`, 'success');
 
-      const input = document.getElementById(`fileInput_${uiKey}`);
-      if (input) input.value = '';
+    const input = document.getElementById(`fileInput_${uiKey}`);
+    if (input) input.value = '';
 
-      setTimeout(() => {
-        loadUploadHistory('CLIENTES', uiKey);
-        uploadProgress.style.display = 'none';
-      }, 1200);
-    } else {
-      throw new Error(saveResult.error || 'Erro ao salvar dados');
-    }
+    setTimeout(() => {
+      loadUploadHistory('CLIENTES', uiKey);
+      uploadProgress.style.display = 'none';
+    }, 1200);
 
   } catch (error) {
     console.error('[ADMIN] Erro no upload (CLIENTES):', error);
@@ -575,6 +706,7 @@ async function handleClientesUpload(file, uiKey) {
 /* =========================
    Histórico
 ========================= */
+
 async function loadUploadHistory(key, uiKey) {
   const historyContainer = document.getElementById(`uploadHistory_${uiKey}`);
   if (!historyContainer) return;
@@ -635,14 +767,13 @@ async function loadUploadHistory(key, uiKey) {
 }
 
 function loadAllHistories() {
-  for (const u of UPLOADS) {
-    loadUploadHistory(u.key, u.uiKey);
-  }
+  for (const u of UPLOADS) loadUploadHistory(u.key, u.uiKey);
 }
 
 /* =========================
    Excluir upload
 ========================= */
+
 async function handleDeleteUpload(uploadId, fileName, key, uiKey) {
   const confirmMessage =
     `Tem certeza que deseja excluir a planilha "${fileName}"?\n\n` +
@@ -696,6 +827,7 @@ async function handleDeleteUpload(uploadId, fileName, key, uiKey) {
 /* =========================
    Limpeza completa
 ========================= */
+
 async function handleClearAll() {
   const firstConfirm = confirm(
     '⚠️ ATENÇÃO: LIMPEZA COMPLETA DO BANCO DE DADOS\n\n' +

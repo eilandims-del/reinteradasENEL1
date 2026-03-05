@@ -519,6 +519,38 @@ static async getClientesData(filters = {}) {
     return { success: false, error: error?.message || String(error), data: [] };
   }
 }
+
+/**
+ * Admin: retorna retornos filtrados client-side por regional e período (dataRef).
+ * Evita índice composto no Firestore.
+ */
+static async getRetornosAdminFiltrado(filters = {}) {
+  try {
+    const regional = this.normalizeRegional(filters.regional);
+    const di = String(filters.dataInicial || '').trim();
+    const df = String(filters.dataFinal || '').trim();
+
+    const baseRes = await this.getRetornosAdmin();
+    if (!baseRes?.success) return baseRes;
+
+    let rows = Array.isArray(baseRes.data) ? baseRes.data : [];
+
+    // regional
+    if (regional && regional !== 'TODOS') {
+      rows = rows.filter(r => String(r.regional || r.REGIONAL || '').toUpperCase() === regional);
+    }
+
+    // período (usa dataRef ISO)
+    if (di) rows = rows.filter(r => String(r.dataRef || '').trim() >= di);
+    if (df) rows = rows.filter(r => String(r.dataRef || '').trim() <= df);
+
+    return { success: true, data: rows };
+  } catch (error) {
+    console.error('[GET RETORNOS ADMIN FILTRADO]', error);
+    return { success: false, error: error?.message || String(error), data: [] };
+  }
+}
+
   /* =========================
      GET UPLOAD HISTORY
      - key: "GERAL" (reiteradas) | "CLIENTES"

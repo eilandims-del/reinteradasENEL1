@@ -63,6 +63,11 @@
     <!-- Admin -->
     <section id="adminSection" class="admin-section" style="display:none;">
 
+      <button id="btnInspetores" class="btn btn-secondary btn-sm" type="button">
+        <i class="fa-solid fa-user-check"></i> Inspetores
+      </button>
+
+
       <section class="upload-section card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
           <h2 class="section-title" style="margin:0;">
@@ -191,11 +196,70 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script type="module" src="js/firebase-config.js"></script>
-<script type="module" src="js/services/firebase-service.js"></script>
-<script type="module" src="js/utils/file-parser.js"></script>
-<script type="module" src="js/utils/helpers.js"></script>
 <script type="module" src="js/admin.js"></script>
+
+<!-- =========================
+  MODAL - INSPETORES (RETORNOS)
+========================= -->
+<div id="modalInspetores" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="inspetoresTitulo">
+        <i class="fa-solid fa-user-check"></i> Retornos dos Inspetores
+      </h2>
+
+      <div class="modal-header-actions">
+        <button id="btnCopiarRetornos" class="btn btn-whatsapp btn-sm" title="Copiar retornos">
+          <i class="fab fa-whatsapp"></i> COPIAR
+        </button>
+
+        <button id="btnExportRetornos" class="btn btn-secondary btn-sm" title="Exportar retornos para XLSX">
+          <i class="fas fa-file-excel"></i> Exportar
+        </button>
+
+        <button class="modal-close" id="fecharModalInspetores">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom: 12px;">
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-weight:800; color: var(--medium-gray);">Regional</label>
+          <select id="inspReg" class="date-mini-input" style="min-width: 210px;">
+            <option value="TODOS">TODOS</option>
+            <option value="ATLANTICO">ATLANTICO</option>
+            <option value="NORTE">NORTE</option>
+            <option value="CENTRO NORTE">CENTRO NORTE</option>
+          </select>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-weight:800; color: var(--medium-gray);">Data Início</label>
+          <input type="date" id="inspDataIni" class="date-mini-input">
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <label style="font-weight:800; color: var(--medium-gray);">Data Fim</label>
+          <input type="date" id="inspDataFim" class="date-mini-input">
+        </div>
+
+        <div style="display:flex; align-items:flex-end; gap:8px;">
+          <button id="btnCarregarRetornos" class="btn btn-primary btn-sm" type="button">
+            <i class="fas fa-rotate"></i> Carregar
+          </button>
+
+          <div id="inspetoresTotal" class="btn btn-secondary btn-sm" style="cursor: default;">
+            Retornos: 0
+          </div>
+        </div>
+      </div>
+
+      <div id="inspetoresLista" class="ranking-list ranking-scroll"></div>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
