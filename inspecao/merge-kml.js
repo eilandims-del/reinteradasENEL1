@@ -202,18 +202,23 @@ async function readKmlIndex(file) {
 }
 
 function buildFromInspecao(rows) {
-  const iE  = colIndex("E");   // Instalacao_nova
+  const iE  = colIndex("E");   // ✅ ALIMENTADOR (usar E)
   const iH  = colIndex("H");   // Número OT
   const iAP = colIndex("AP");  // DISPOSITIVO_PROTECAO
   const iV  = colIndex("V");   // Subestacao
-  const iW  = colIndex("W");   // Alimentador
+  const iW  = colIndex("W");   // Alimentador (backup)
 
   return rows.slice(1).map(row => {
     const dispProt = String(row[iAP] ?? "").trim();
-    const inst     = String(row[iE]  ?? "").trim();
     const ot       = String(row[iH]  ?? "").trim();
     const sub      = String(row[iV]  ?? "").trim();
-    const alim     = String(row[iW]  ?? "").trim();
+
+    // ✅ Alimentador principal = COLUNA E
+    const alimE = String(row[iE] ?? "").trim();
+
+    // (opcional) backup da W se E vier vazio
+    const alimW = String(row[iW] ?? "").trim();
+    const alim  = alimE || alimW;
 
     const key = normalizeKey(dispProt);
     if (!key) return null;
@@ -222,10 +227,10 @@ function buildFromInspecao(rows) {
       key,
       TIPO: "INSPECAO",
       DISPOSITIVO_PROTECAO: dispProt,
-      INSTALACAO_NOVA: inst,
       NUMERO_OT: ot,
-      ALIMENTADOR: alim,
-      SUBESTACAO: sub
+      ALIMENTADOR: alim,      // ✅ agora vem da E
+      SUBESTACAO: sub,
+      INSTALACAO_NOVA: ""     // pode manter vazio ou remover do export
     };
   }).filter(Boolean);
 }
@@ -280,14 +285,12 @@ function buildKml(rows, idx) {
   // ---- Categoria: usa ALIMENTADOR; se vazio, usa INSTALACAO_NOVA (porque é onde vem CND01C4 etc)
   function detectCategory(row) {
     const alim = normalizeKey(row.ALIMENTADOR || "");
-    
-    // alimentador manda
+  
     if (alim) {
       const hit = ALIM_LOOKUP.get(alim);
       if (hit?.subestacao) return hit.subestacao;
     }
   
-    // só usa SUBESTACAO se for nome completo
     const sub = String(row.SUBESTACAO || "").trim();
     if (sub && sub.length > 3) return sub;
   
@@ -429,8 +432,7 @@ $("btnGerarPlanilha").addEventListener("click", async () => {
 const alimToSub = new Map();
 
 for (const r of ins) {
-  const alim = normalizeKey(r.ALIMENTADOR || r.INSTALACAO_NOVA || "");
-
+  const alim = normalizeKey(r.ALIMENTADOR || "");
   const sub = String(r.SUBESTACAO || "").trim();
 
   if (alim && sub && !alimToSub.has(alim)) {
