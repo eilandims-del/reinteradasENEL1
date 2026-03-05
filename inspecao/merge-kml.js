@@ -51,6 +51,13 @@ const ALIM_TREE = {
       "BRQ01F1","BRQ01F2",
       "GRJ01N1","GRJ01N2","GRJ01N3","GRJ01N4"
     ]
+  },
+  "TIANGUÁ": {
+    "Tianguá": [
+      "MCB01M2","MCB01M3","MCB01M4",
+      "VCS01C2","VCS01C3","VCS01C4","VCS01C5",
+      "TNG01S1","TNG01S2","TNG01S3","TNG01S4","TNG01S5","TNG01S6","TNG01S7"
+    ]
   }
 },
 
@@ -91,11 +98,17 @@ function buildAlimLookup(tree) {
   for (const [regional, blocos] of Object.entries(tree || {})) {
     for (const [bloco, subs] of Object.entries(blocos || {})) {
       for (const [subestacao, alims] of Object.entries(subs || {})) {
-        for (const a of (alims || [])) {
-          const key = String(a).trim().toUpperCase();
+
+        // garante que alims é array
+        if (!Array.isArray(alims)) {
+          console.warn("[ALIM_LOOKUP] Esperava array em", { regional, bloco, subestacao, alims });
+          continue;
+        }
+
+        for (const a of alims) {
+          const key = normalizeKey(a);   // ✅ AQUI a correção crítica
           if (!key) continue;
 
-          // Se houver duplicado, mantém o primeiro e avisa no console
           if (map.has(key)) {
             console.warn("[ALIM_LOOKUP] Duplicado:", key, "já estava em", map.get(key), "novo:", { regional, bloco, subestacao });
             continue;
@@ -234,7 +247,7 @@ function buildFromReiteradas(rows) {
   }).filter(r => r.key);
 }
 
-function mergeAndDiff(ins, rei) {
+function mergeALL(ins, rei) {
   const setIns = new Set(ins.map(x => x.key));
   const setRei = new Set(rei.map(x => x.key));
   const intersection = new Set([...setIns].filter(k => setRei.has(k)));
@@ -266,13 +279,15 @@ function buildKml(rows, idx) {
 
   // ---- Categoria: usa ALIMENTADOR; se vazio, usa INSTALACAO_NOVA (porque é onde vem CND01C4 etc)
   function detectCategory(row) {
-    const alim = normalizeKey(row.ALIMENTADOR || row.INSTALACAO_NOVA || "");
+    const alim = normalizeKey(row.ALIMENTADOR || "");
+    
+    // alimentador manda
+    if (alim) {
+      const hit = ALIM_LOOKUP.get(alim);
+      if (hit?.subestacao) return hit.subestacao;
+    }
   
-    // 1) alimentador manda
-    const hit = ALIM_LOOKUP.get(alim);
-    if (hit?.subestacao) return hit.subestacao;
-  
-    // 2) só aceita SUBESTACAO se tiver cara de nome (não sigla 3 letras)
+    // só usa SUBESTACAO se for nome completo
     const sub = String(row.SUBESTACAO || "").trim();
     if (sub && sub.length > 3) return sub;
   
@@ -435,7 +450,7 @@ for (const r of rei) {
   r.SUBESTACAO = hit?.subestacao || alimToSub.get(alim) || "";
 }
 
-  mergedRows = mergeAndDiff(ins, rei);
+  mergedRows = mergeALL(ins, rei);
 
   // Planilha resultado: mostra claramente os campos
   const exportRows = mergedRows.map(r => ({
