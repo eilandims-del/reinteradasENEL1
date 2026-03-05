@@ -1772,8 +1772,3 @@ input:focus, select:focus{
   pointer-events: none;
   filter: blur(1px);
 }
-.modal { z-index: 1000; }
-#modalDetalhes { z-index: 1100; }
-#modalClientes { z-index: 1050; }
-#modalRetornoInspetor { z-index: 1200; }
-#modalInspetores { z-index: 1200; }

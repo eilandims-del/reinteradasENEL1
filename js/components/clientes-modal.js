@@ -6,6 +6,7 @@ import { openModal, closeModal, fillDetailsModal } from './modal.js';
 function normKey(k) {
   return String(k || '').trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
 }
+
 function getFieldValue(row, fieldName) {
   if (!row) return '';
   if (row[fieldName] != null) return row[fieldName];
@@ -19,9 +20,11 @@ function getFieldValue(row, fieldName) {
 
   return '';
 }
+
 function sanitizeOneLine(v) {
   return String(v ?? '').replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
 }
+
 function fmtPeriodo(di, df) {
   const fmt = (iso) => {
     if (!iso) return '';
@@ -34,6 +37,7 @@ function fmtPeriodo(di, df) {
   if (!di && df) return `até ${fmt(df)}`;
   return 'Sem filtro de data';
 }
+
 function getNumCliente(row) {
   return String(
     getFieldValue(row, 'NUM_CLIENTE') ||
@@ -42,6 +46,7 @@ function getNumCliente(row) {
     ''
   ).trim();
 }
+
 function getNomeCliente(row) {
   return String(
     getFieldValue(row, 'NOME CLIENTE') ||
@@ -50,11 +55,15 @@ function getNomeCliente(row) {
     ''
   ).trim();
 }
+
 function getDataAvisoISO(row) {
+  // seu parser já transforma em ISO (YYYY-MM-DD)
   return String(getFieldValue(row, 'DATA AVISO') || '').trim();
 }
+
 function inPeriodoISO(iso, di, df) {
   if (!iso) return false;
+  // ISO YYYY-MM-DD permite comparar por string
   if (di && iso < di) return false;
   if (df && iso > df) return false;
   return true;
@@ -103,7 +112,8 @@ function renderRanking(containerId, items, onClick) {
   if (!container) return;
 
   if (!items || !items.length) {
-    container.innerHTML = '<p style="text-align:center; padding: 2rem; color: var(--medium-gray);">Nenhum dado.</p>';
+    container.innerHTML =
+      '<p style="text-align:center; padding: 2rem; color: var(--medium-gray);">Nenhum dado.</p>';
     return;
   }
 
@@ -124,10 +134,50 @@ function renderRanking(containerId, items, onClick) {
   });
 }
 
+/* ========= modal stacking helpers ========= */
+function bringDetalhesToFront() {
+  const mClientes = document.getElementById('modalClientes');
+  const mDetalhes = document.getElementById('modalDetalhes');
+
+  // fallback por JS (mesmo que o CSS não esteja perfeito)
+  if (mClientes) {
+    mClientes.classList.add('is-behind');
+    mClientes.style.zIndex = '2000';
+  }
+
+  if (mDetalhes) {
+    mDetalhes.style.zIndex = '3000';
+    const content = mDetalhes.querySelector('.modal-content');
+    if (content) content.style.zIndex = '3001';
+  }
+}
+
+function restoreClientesLayer() {
+  const mClientes = document.getElementById('modalClientes');
+  if (!mClientes) return;
+  mClientes.classList.remove('is-behind');
+  mClientes.style.zIndex = '';
+}
+
 /* ========= modal ========= */
 export function setupClientesModalUI() {
+  // fechar no X do modalClientes
   document.getElementById('fecharModalClientes')?.addEventListener('click', () => {
+    restoreClientesLayer();
     closeModal?.('modalClientes');
+  });
+
+  // quando fechar o modalDetalhes, destrava o modalClientes (se estiver aberto)
+  document.getElementById('fecharModal')?.addEventListener('click', () => {
+    restoreClientesLayer();
+  });
+
+  // ESC/backdrop também podem fechar o detalhes via modal.js,
+  // então escuta o evento de "transition" / clique do backdrop é global.
+  // Aqui é um fallback simples: quando não existir modalDetalhes ativo, destrava.
+  document.addEventListener('click', () => {
+    const detalhesAtivo = document.querySelector('#modalDetalhes.modal.active');
+    if (!detalhesAtivo) restoreClientesLayer();
   });
 }
 
@@ -144,16 +194,16 @@ export function openClientesModal({ rows, regionalLabel, dataInicial, dataFinal 
     return inPeriodoISO(iso, dataInicial, dataFinal);
   });
 
-  // 2) rankings (somente 2)
+  // 2) rankings
   const top10 = rankClientesTop(filtradas);
   const rankingCausa = rankByField(filtradas, 'CAUSA');
 
-  // 3) render
+  // 3) render (somente 2 cards)
   renderRanking('rankingClientesTop10', top10, (item) => {
     const num = item.num;
     const ocorr = item.ocorrencias || [];
 
-    // título
+    // título do modalDetalhes: "CLIENTE: <NUM> - <NOME>"
     const nome = getNomeCliente(ocorr[0]) || '';
     const tit = document.getElementById('detalhesTitulo');
     if (tit) {
@@ -162,12 +212,15 @@ export function openClientesModal({ rows, regionalLabel, dataInicial, dataFinal 
         : `CLIENTE: ${sanitizeOneLine(num)}`;
     }
 
-    // remove OBS/CC
-    let selectedColumns = [];
+    // tenta reaproveitar colunas selecionadas (mas removendo OBS CC)
     const modalContent = document.getElementById('detalhesConteudo');
-    if (modalContent?.dataset?.selectedColumns) {
-      try { selectedColumns = JSON.parse(modalContent.dataset.selectedColumns); } catch (_) {}
+    let selectedColumns = [];
+
+    if (modalContent && modalContent.dataset.selectedColumns) {
+      try { selectedColumns = JSON.parse(modalContent.dataset.selectedColumns); }
+      catch (_) { selectedColumns = []; }
     }
+
     selectedColumns = (selectedColumns || []).filter(c => {
       const cc = String(c || '').toUpperCase();
       return !cc.includes('OBS') && !cc.includes('CC');
@@ -175,19 +228,21 @@ export function openClientesModal({ rows, regionalLabel, dataInicial, dataFinal 
 
     fillDetailsModal(String(num || '').trim(), ocorr, selectedColumns);
 
-    // ✅ garante que o detalhe fique na frente
+    // garante que o detalhes fique acima
+    bringDetalhesToFront();
     openModal('modalDetalhes');
-    closeModal('modalClientes');
   });
 
   renderRanking('rankingClientesCausa', rankingCausa, (item) => {
     const tit = document.getElementById('detalhesTitulo');
     if (tit) tit.textContent = `CAUSA: ${sanitizeOneLine(item.name)}`;
+
     fillDetailsModal(String(item.name || ''), item.ocorrencias || [], []);
 
+    bringDetalhesToFront();
     openModal('modalDetalhes');
-    closeModal('modalClientes');
   });
 
+  // abre modalClientes
   openModal('modalClientes');
 }

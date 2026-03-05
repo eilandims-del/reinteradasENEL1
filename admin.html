@@ -74,11 +74,6 @@
           </button>
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;"></div>
-        <button id="btnInspetores" class="btn btn-secondary btn-sm" title="Ver retornos enviados pelos inspetores">
-          <i class="fas fa-user-check"></i> Inspetores
-        </button>
-
         <!-- =========================
              REITERADAS (GERAL)
         ========================== -->
@@ -201,43 +196,6 @@
 <script type="module" src="js/utils/file-parser.js"></script>
 <script type="module" src="js/utils/helpers.js"></script>
 <script type="module" src="js/admin.js"></script>
-
-<!-- Modal Inspetores (Admin) -->
-<div id="modalInspetores" class="modal">
-  <div class="modal-content" style="max-width:980px;">
-    <button class="modal-close" type="button">&times;</button>
-
-    <h2 style="margin-top:0;"><i class="fas fa-user-check"></i> Retornos dos Inspetores</h2>
-
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;">
-      <div class="form-group" style="margin:0;">
-        <label for="inspFiltroData">Data (dia)</label>
-        <input type="date" id="inspFiltroData" class="form-input" />
-      </div>
-
-      <div class="form-group" style="margin:0;">
-        <label for="inspFiltroRegional">Regional</label>
-        <select id="inspFiltroRegional" class="form-input">
-          <option value="TODOS">TODOS</option>
-          <option value="ATLANTICO">ATLÂNTICO</option>
-          <option value="NORTE">NORTE</option>
-          <option value="CENTRO NORTE">CENTRO NORTE</option>
-        </select>
-      </div>
-
-      <button id="btnAtualizarInspetores" class="btn btn-secondary btn-sm">
-        <i class="fas fa-rotate"></i> Atualizar
-      </button>
-
-      <button id="btnExportarInspetores" class="btn btn-primary btn-sm">
-        <i class="fas fa-file-excel"></i> Exportar XLSX
-      </button>
-    </div>
-
-    <div id="inspetoresResumo" style="margin-top:10px;color:var(--medium-gray);"></div>
-    <div id="inspetoresLista" style="margin-top:12px;"></div>
-  </div>
-</div>
 
 </body>
 </html>
