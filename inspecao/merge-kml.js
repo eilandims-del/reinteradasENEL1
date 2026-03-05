@@ -273,22 +273,19 @@ function buildKml(rows, idx) {
 
   // ---- Categoria: usa ALIMENTADOR; se vazio, usa INSTALACAO_NOVA (porque é onde vem CND01C4 etc)
   function detectCategory(row) {
-    const alim = String(row.ALIMENTADOR || row.INSTALACAO_NOVA || "")
-      .trim()
-      .toUpperCase();
+    // pega alimentador/instalacao e normaliza bem agressivo
+    const alim = normalizeKey(row.ALIMENTADOR || row.INSTALACAO_NOVA || "");
   
-    // ✅ 1) REGRA PRINCIPAL: pelo alimentador exato
+    // 1) regra principal: dicionário ALIM_LOOKUP -> subestacao
     const hit = ALIM_LOOKUP.get(alim);
     if (hit?.subestacao) return hit.subestacao;
   
-    // ✅ 2) se tiver SUBESTACAO já preenchida (ex.: vindo da inspeção), usa
+    // 2) se já veio subestação preenchida (inspeção ou passo 2), usa
     const sub = String(row.SUBESTACAO || "").trim();
     if (sub) return sub;
   
-    // ✅ 3) fallback (último recurso)
-    if (alim) return alim.substring(0, 3) || "Outros";
-    const dp = String(row.DISPOSITIVO_PROTECAO || "").trim().toUpperCase();
-    return dp.substring(0, 3) || "Outros";
+    // 3) fallback SEM criar pasta por alimentador
+    return "Outros";
   }
 
   const groups = {};
