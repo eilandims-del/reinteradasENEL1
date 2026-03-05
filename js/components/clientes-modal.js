@@ -175,6 +175,7 @@ export function openClientesModal({ rows, regionalLabel, dataInicial, dataFinal 
 
     fillDetailsModal(String(num || '').trim(), ocorr, selectedColumns);
 
+    // ✅ garante que o detalhe fique na frente
     openModal('modalDetalhes');
     closeModal('modalClientes');
   });
