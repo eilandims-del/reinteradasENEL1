@@ -20,8 +20,7 @@ const REQUIRED_COLUMNS_CLIENTES = [
   'DATA AVISO'
 ];
 
-const MAX_UPLOAD_ROWS = 10000;
-
+const MAX_UPLOAD_ROWS_CLIENTES = 10000;
 
 /**
  * Normalizar nome da coluna (remove espaços, acentos, etc.)
@@ -333,22 +332,31 @@ export async function parseCSV(file, options = {}) {
   
           const data = [];
           const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
-  
+          const maxRows = options.maxRows ?? (dataset === 'CLIENTES' ? MAX_UPLOAD_ROWS_CLIENTES : Infinity);
+          
           for (let i = 1; i < lines.length; i++) {
             const values = lines[i]
               .split(',')
               .map(v => v.trim().replace(/^"|"$/g, ''));
-  
+          
             const normalizedRow = normalizeRow(values, originalHeaders);
-  
+          
+            if (isRowEmpty(normalizedRow)) continue;
+          
+            if (data.length >= maxRows) {
+              reject(new Error(
+                `Planilha muito grande (${data.length} linhas válidas). ` +
+                `Limite máximo permitido: ${maxRows}.`
+              ));
+              return;
+            }
+          
             if (dataset === 'CLIENTES') {
-              // agora o mínimo é ter NUM_CLIENTE e INCIDENCIA
               if (normalizedRow.NUM_CLIENTE && normalizedRow.INCIDENCIA) data.push(normalizedRow);
             } else {
               if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
             }
-          }
-  
+          }  
           resolve({
             data,
             headers: originalHeaders,
@@ -423,32 +431,29 @@ export async function parseExcel(file, options = {}) {
 
         const data = [];
         const dataset = String(options.dataset || 'REITERADAS').toUpperCase();
-
+        const maxRows = options.maxRows ?? (dataset === 'CLIENTES' ? MAX_UPLOAD_ROWS_CLIENTES : Infinity);
+        
         for (let i = 1; i < jsonData.length; i++) {
           const row = jsonData[i];
           const normalizedRow = normalizeRow(row, originalHeaders);
         
-          // ✅ descarta linhas totalmente vazias
           if (isRowEmpty(normalizedRow)) continue;
         
-          // ✅ trava cedo
-          if (data.length >= MAX_UPLOAD_ROWS) {
+          // limitar apenas CLIENTES
+          if (data.length >= maxRows) {
             reject(new Error(
               `Planilha muito grande (${data.length} linhas válidas). ` +
-              `Limite máximo permitido: ${MAX_UPLOAD_ROWS}. ` +
-              `Dica: verifique se há milhares de linhas vazias no final ou exporte por período.`
+              `Limite máximo permitido: ${maxRows}.`
             ));
             return;
           }
-        
-          // ✅ AQUI estava faltando: adicionar as linhas válidas
           if (dataset === 'CLIENTES') {
             if (normalizedRow.NUM_CLIENTE && normalizedRow.INCIDENCIA) data.push(normalizedRow);
           } else {
             if (normalizedRow.ELEMENTO && normalizedRow.INCIDENCIA) data.push(normalizedRow);
           }
         }
-        resolve({
+          resolve({
           data,
           headers: originalHeaders,
           totalRows: data.length
