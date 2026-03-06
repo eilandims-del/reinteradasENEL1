@@ -2,7 +2,7 @@
  * Serviços Firebase - MODULAR (Auth + Firestore)
  *
  * ✅ Esta versão adiciona suporte a "CLIENTES AFETADOS" em uma coleção separada.
- * - Reiteradas:   coleção "reinteradas" (mantido)
+ * - Reiteradas:   coleção "reiteradas" (mantido)
  * - Clientes:     coleção "clientes_afetados"
  * - Histórico:    coleção "uploads" (mantido), com campo dataset = "REITERADAS" | "CLIENTES"
  */
@@ -66,7 +66,7 @@ export class AuthService {
 ========================= */
 export class DataService {
   // ⚠️ mantém o nome atual para não quebrar o site existente
-  static COLLECTION_NAME = "reinteradas";
+  static COLLECTION_NAME = "reiteradas";
   static CLIENTES_COLLECTION = "clientes_afetados";
   static UPLOADS_COLLECTION = "uploads";
   static CLIENTES_TOP_COLLECTION = "clientes_top";
