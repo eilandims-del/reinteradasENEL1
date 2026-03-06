@@ -35,32 +35,7 @@
 <main class="main-content">
   <div class="container">
 
-    <!-- Login -->
-    <section id="loginSection" class="login-section card">
-      <h2 class="section-title">
-        <i class="fas fa-lock"></i> Acesso Administrativo
-      </h2>
-
-      <form id="loginForm" class="login-form">
-        <div class="form-group">
-          <label for="email">E-mail:</label>
-          <input type="email" id="email" class="form-input" required autocomplete="username" />
-        </div>
-
-        <div class="form-group">
-          <label for="senha">Senha:</label>
-          <input type="password" id="senha" class="form-input" required autocomplete="current-password" />
-        </div>
-
-        <button type="submit" class="btn btn-primary btn-block">
-          <i class="fas fa-sign-in-alt"></i> Entrar
-        </button>
-
-        <div id="loginError" class="error-message"></div>
-      </form>
-    </section>
-
-    <!-- Admin -->
+    <!-- Admin (página protegida: se não estiver logado, redireciona para login.html) -->
     <section id="adminSection" class="admin-section" style="display:none;">
 
       <button id="btnInspetores" class="btn btn-secondary btn-sm" type="button">

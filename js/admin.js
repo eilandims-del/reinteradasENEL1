@@ -39,7 +39,9 @@ function checkAuthState() {
       showAdminSection();
       loadAllHistories();
     } else {
-      showLoginSection();
+      // ✅ Login único em /login.html (evita “duplo login”)
+      const base = window.location.pathname.replace(/\/[^/]*$/, '/');
+      window.location.href = `${base}login.html?role=admin`;
     }
   });
 }

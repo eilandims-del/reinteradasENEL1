@@ -17,7 +17,7 @@
       <h1 class="logo">Painel do Inspetor</h1>
       <nav class="header-nav">
         <a href="index.html" class="nav-link"><i class="fas fa-home"></i> Página Inicial</a>
-        <button id="logoutInspetorBtn" class="nav-link btn-logout" style="display:none;">
+        <button id="logoutBtn" class="nav-link btn-logout" style="display:none;">
           <i class="fas fa-sign-out-alt"></i> Sair
         </button>
       </nav>
@@ -28,8 +28,10 @@
 <main class="main-content">
   <div class="container">
 
-    <!-- Painel Inspetor -->
-    <section id="inspetorSection" class="admin-section">
+    <!-- Painel Inspetor (página protegida: se não estiver logado, redireciona para login.html) -->
+    <section id="inspetorSection" class="admin-section" style="display:none;">
+      <section class="card">
+
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
           <h2 class="section-title" style="margin:0;"><i class="fas fa-list-check"></i> Reiteradas para Retorno</h2>
           <button id="btnReloadInspetor" class="btn btn-secondary btn-sm">

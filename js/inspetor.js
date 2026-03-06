@@ -23,32 +23,29 @@ function init() {
 }
 
 function checkAuthState() {
-
   AuthService.onAuthStateChanged((user) => {
+    currentUser = user;
 
-    if(!user){
-      window.location.href = "login.html"
-      return
+    if (user) {
+      document.getElementById('inspetorSection')?.classList.remove('hidden');
+      document.getElementById('loginSection')?.classList.add('hidden');
+      const lb = document.getElementById('logoutBtn');
+      if (lb) lb.style.display = 'block';
+
+      // defaults
+      enableDateInputs(true);
+      enableTipoInputs(false); // só libera após data válida
+      renderTableMessage('Selecione Regional → Data → Elemento.');
+
+    } else {
+      // ✅ Login único em /login.html (evita “duplo login”)
+      const base = window.location.pathname.replace(/\/[^/]*$/, '/');
+      window.location.href = `${base}login.html?role=inspetor`;
     }
-
-    currentUser = user
-
-    enableDateInputs(true)
-    enableTipoInputs(false)
-
-    renderTableMessage('Selecione Regional → Data → Elemento.')
-
-  })
-
+  });
 }
 
 function initEvents() {
-  // Login
-  document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    await handleLogin();
-  });
-
   // Logout
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await handleLogout();
