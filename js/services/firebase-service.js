@@ -682,7 +682,11 @@ static async getRetornosAdminFiltrado(filters = {}) {
 
     } catch (error) {
       console.error('[SAVE RETORNO]', error);
-      return { success: false, error: error?.message || String(error) };
+      const msg = String(error?.message || error || '');
+      if (String(error?.code || '').includes('permission-denied') || msg.toLowerCase().includes('insufficient permissions')) {
+        return { success: false, error: 'Missing or insufficient permissions. Ajuste as regras do Firestore para retornos_inspetores.' };
+      }
+      return { success: false, error: msg };
     }
   }
 
@@ -706,7 +710,11 @@ static async getRetornosAdminFiltrado(filters = {}) {
 
     } catch (error) {
       console.error('[GET RETORNOS INSPETOR]', error);
-      return { success: false, error: error?.message || String(error), data: [] };
+      const msg = String(error?.message || error || '');
+      if (String(error?.code || '').includes('permission-denied') || msg.toLowerCase().includes('insufficient permissions')) {
+        return { success: false, error: 'Missing or insufficient permissions. Ajuste as regras do Firestore para retornos_inspetores.', data: [] };
+      }
+      return { success: false, error: msg, data: [] };
     }
   }
 

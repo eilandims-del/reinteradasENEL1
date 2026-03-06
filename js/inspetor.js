@@ -1,7 +1,7 @@
 /**
  * Painel do Inspetor
  * Fluxo: Regional -> Data -> Elemento -> tabela
- * Bolinha verde abre modal de retorno e salva em retornos_inspetores
+ * Exibe SOMENTE estruturas reiteradas (ELEMENTO com 2+ ocorrências)
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
@@ -12,9 +12,12 @@ import { setupRetornoModal } from './components/retorno-modal.js';
 let currentUser = null;
 let selectedRegional = 'TODOS';
 let selectedTipo = 'TODOS';
-let cacheReiteradas = [];
+let cacheRows = [];            // linhas brutas do Firestore
+let cacheRanking = [];         // estruturas reiteradas agregadas por ELEMENTO
 let cacheRetornosMap = new Map();
-let currentRowForModal = null;
+let currentItemForModal = null;
+
+const MIN_REPEAT_COUNT = 2;
 
 function byId(id){ return document.getElementById(id); }
 
@@ -39,7 +42,7 @@ function checkAuthState() {
     if (panel) panel.style.display = 'block';
     if (logout) logout.style.display = 'inline-flex';
 
-    renderTableMessage('Selecione Regional → Data → Elemento e clique no calendário para aplicar.');
+    renderTableMessage('Selecione Regional → Data → Elemento e clique em Buscar.');
   });
 }
 
@@ -56,16 +59,16 @@ function initEvents(){
     await loadReiteradas();
   });
 
-  // Regional (radio)
   document.querySelectorAll('input[name="regional"]').forEach((el) => {
     el.addEventListener('change', () => {
       selectedRegional = String(el.value || 'TODOS');
-      cacheReiteradas = []; // força recarga quando trocar regional
-      renderTableMessage('Regional selecionada. Agora informe o período e clique em buscar.');
+      cacheRows = [];
+      cacheRanking = [];
+      renderTableMessage('Regional selecionada. Agora informe o período e clique em Buscar.');
+      updateResumo();
     });
   });
 
-  // Tipo de elemento (radio)
   document.querySelectorAll('input[name="tipo"]').forEach((el) => {
     el.addEventListener('change', () => {
       selectedTipo = String(el.value || 'TODOS');
@@ -81,25 +84,30 @@ function initEvents(){
 function setupModal(){
   setupRetornoModal({
     onSubmit: async ({ retornoTexto }) => {
-      if (!currentRowForModal) {
-        showToast('Nenhuma linha selecionada.', 'error');
+      if (!currentItemForModal) {
+        showToast('Nenhuma estrutura selecionada.', 'error');
         return { success: false };
       }
 
       const payload = {
-        incidencia: getVal(currentRowForModal, 'INCIDENCIA'),
+        incidencia: currentItemForModal.incidencia || currentItemForModal.ultimaIncidencia || '',
         regional: selectedRegional,
-        dataRef: getVal(currentRowForModal, 'DATA') || '',
-        elemento: getVal(currentRowForModal, 'ELEMENTO'),
-        alimentador: getVal(currentRowForModal, 'ALIMENT.') || getVal(currentRowForModal, 'ALIMENTADOR') || '',
-        causa: getVal(currentRowForModal, 'CAUSA'),
-        clienteAfetado: getVal(currentRowForModal, 'CLI. AFE') || getVal(currentRowForModal, 'CLI AFE') || '',
+        dataRef: currentItemForModal.data || '',
+        elemento: currentItemForModal.elemento || '',
+        alimentador: currentItemForModal.alimentador || '',
+        causa: currentItemForModal.causa || '',
+        clienteAfetado: currentItemForModal.clienteAfetado || '',
         retornoTexto
       };
 
       const res = await DataService.saveRetornoInspetor(payload);
       if (!res?.success) {
-        showToast(`Erro ao salvar retorno: ${res?.error || 'falha'}`, 'error');
+        const msg = String(res?.error || 'falha');
+        if (msg.toLowerCase().includes('permission')) {
+          showToast('Sem permissão no Firestore para salvar retorno. Ajuste as regras.', 'error');
+        } else {
+          showToast(`Erro ao salvar retorno: ${msg}`, 'error');
+        }
         return { success: false };
       }
 
@@ -111,12 +119,6 @@ function setupModal(){
   });
 }
 
-function setSegmentActive(containerId, attr, value){
-  byId(containerId)?.querySelectorAll(`[${attr}]`).forEach((btn) => {
-    btn.classList.toggle('active', String(btn.getAttribute(attr)) === String(value));
-  });
-}
-
 async function loadReiteradas(){
   if (!currentUser) return;
 
@@ -125,11 +127,11 @@ async function loadReiteradas(){
 
   if (!di && !df) {
     showToast('Informe ao menos uma data.', 'error');
-    renderTableMessage('Informe ao menos uma data e clique no calendário para aplicar.');
+    renderTableMessage('Informe ao menos uma data e clique em Buscar.');
     return;
   }
 
-  renderTableMessage('Carregando...');
+  renderTableMessage('Carregando estruturas reiteradas...');
 
   const res = await DataService.getData({
     regional: selectedRegional,
@@ -137,22 +139,112 @@ async function loadReiteradas(){
     dataFinal: df
   });
 
-  cacheReiteradas = (res?.success && Array.isArray(res.data)) ? res.data : [];
+  cacheRows = (res?.success && Array.isArray(res.data)) ? res.data : [];
+  cacheRanking = buildReiteradasRanking(cacheRows);
+
   await loadRetornosDoInspetor();
   renderTable();
-
-  const resumo = byId('inspResumo');
-  if (resumo) resumo.textContent = `Regional: ${selectedRegional} • Período: ${di || '—'} até ${df || '—'} • Registros: ${cacheReiteradas.length}`;
+  updateResumo();
 }
 
 async function loadRetornosDoInspetor(){
   const res = await DataService.getRetornosDoInspetor();
   const rows = (res?.success && Array.isArray(res.data)) ? res.data : [];
   cacheRetornosMap = new Map();
+
+  if (!res?.success && String(res?.error || '').toLowerCase().includes('permission')) {
+    showToast('Sem permissão no Firestore para ler retornos do inspetor.', 'error');
+  }
+
   rows.forEach((r) => {
     const inc = String(r.incidencia || r.INCIDENCIA || '').trim();
     if (inc) cacheRetornosMap.set(inc, r);
   });
+}
+
+function updateResumo(){
+  const di = byId('inspDataInicial')?.value || '—';
+  const df = byId('inspDataFinal')?.value || '—';
+  const resumo = byId('inspResumo');
+  if (resumo) {
+    resumo.textContent = `Regional: ${selectedRegional} • Período: ${di} até ${df} • Estruturas reiteradas: ${cacheRanking.length}`;
+  }
+}
+
+function buildReiteradasRanking(rows){
+  const map = new Map();
+
+  for (const row of (rows || [])) {
+    const elemento = getVal(row, 'ELEMENTO');
+    if (!elemento) continue;
+
+    if (!map.has(elemento)) {
+      map.set(elemento, { elemento, ocorrencias: [] });
+    }
+    map.get(elemento).ocorrencias.push(row);
+  }
+
+  const result = [];
+
+  for (const [, item] of map.entries()) {
+    const ocorrencias = item.ocorrencias || [];
+    const quantidade = ocorrencias.length;
+    if (quantidade < MIN_REPEAT_COUNT) continue;
+
+    const ultima = ocorrencias
+      .slice()
+      .sort((a, b) => String(getVal(b, 'DATA') || '').localeCompare(String(getVal(a, 'DATA') || '')))[0] || ocorrencias[0];
+
+    result.push({
+      elemento: item.elemento,
+      quantidade,
+      ocorrencias,
+      incidencia: getVal(ultima, 'INCIDENCIA') || '',
+      ultimaIncidencia: getVal(ultima, 'INCIDENCIA') || '',
+      data: getVal(ultima, 'DATA') || '',
+      causa: mostFrequentField(ocorrencias, 'CAUSA'),
+      clienteAfetado: mostFrequentFieldMulti(ocorrencias, ['CLI. AFE', 'CLI AFE', 'CLI. AFET']),
+      alimentador: mostFrequentFieldMulti(ocorrencias, ['ALIMENT.', 'ALIMENTADOR', 'ALIMENT']),
+      responded: ocorrencias.some(r => cacheRetornosMap.has(String(getVal(r, 'INCIDENCIA')).trim()))
+    });
+  }
+
+  result.sort((a, b) => b.quantidade - a.quantidade || a.elemento.localeCompare(b.elemento));
+  return result;
+}
+
+function mostFrequentField(rows, field){
+  const counts = new Map();
+  for (const r of (rows || [])) {
+    const v = getVal(r, field);
+    if (!v) continue;
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  let best = '';
+  let max = -1;
+  for (const [k, c] of counts.entries()) {
+    if (c > max) { best = k; max = c; }
+  }
+  return best;
+}
+
+function mostFrequentFieldMulti(rows, fields){
+  const counts = new Map();
+  for (const r of (rows || [])) {
+    let chosen = '';
+    for (const f of (fields || [])) {
+      chosen = getVal(r, f);
+      if (chosen) break;
+    }
+    if (!chosen) continue;
+    counts.set(chosen, (counts.get(chosen) || 0) + 1);
+  }
+  let best = '';
+  let max = -1;
+  for (const [k, c] of counts.entries()) {
+    if (c > max) { best = k; max = c; }
+  }
+  return best;
 }
 
 function renderTableMessage(msg){
@@ -167,43 +259,32 @@ function renderTable(){
 
   const term = normText(byId('inspBusca')?.value || '');
 
-  let rows = [...cacheReiteradas];
-  rows = rows.filter((r) => matchesTipo(getVal(r, 'ELEMENTO'), selectedTipo));
+  let rows = [...cacheRanking];
+  rows = rows.filter((r) => matchesTipo(r.elemento, selectedTipo));
 
   if (term) {
     rows = rows.filter((r) => {
-      const hay = [
-        getVal(r, 'ELEMENTO'),
-        getVal(r, 'INCIDENCIA'),
-        getVal(r, 'CLI. AFE') || getVal(r, 'CLI AFE'),
-        getVal(r, 'CAUSA')
-      ].join(' | ');
+      const hay = [r.elemento, r.incidencia, r.clienteAfetado, r.causa, r.alimentador].join(' | ');
       return normText(hay).includes(term);
     });
   }
 
   if (!rows.length) {
-    renderTableMessage('Nenhuma ocorrência para os filtros selecionados.');
+    renderTableMessage('Nenhuma estrutura reiterada para os filtros selecionados.');
     return;
   }
 
   tbody.innerHTML = rows.map((r) => {
-    const elemento = getVal(r, 'ELEMENTO') || '—';
-    const qtd = getQuantidade(r);
-    const causa = getVal(r, 'CAUSA') || '—';
-    const inc = getVal(r, 'INCIDENCIA') || '—';
-    const cli = getVal(r, 'CLI. AFE') || getVal(r, 'CLI AFE') || getVal(r, 'CLI. AFET') || '—';
-    const retorno = cacheRetornosMap.get(inc);
-    const responded = !!retorno;
+    const responded = (r.ocorrencias || []).some(x => cacheRetornosMap.has(String(getVal(x, 'INCIDENCIA')).trim()));
     const statusLabel = responded ? 'RESPONDIDO' : 'PENDENTE';
 
     return `
-      <tr data-inc="${escapeHtml(inc)}">
-        <td>${escapeHtml(elemento)}</td>
-        <td>${escapeHtml(qtd)}</td>
-        <td>${escapeHtml(causa)}</td>
-        <td><a class="insp-inc-link" href="${formatIncidenciaUrl(inc)}" target="_blank" rel="noopener noreferrer">${escapeHtml(inc)}</a></td>
-        <td>${escapeHtml(cli)}</td>
+      <tr data-elemento="${escapeHtml(r.elemento)}" data-inc="${escapeHtml(r.incidencia)}">
+        <td>${escapeHtml(r.elemento || '—')}</td>
+        <td>${escapeHtml(String(r.quantidade || 0))}</td>
+        <td>${escapeHtml(r.causa || '—')}</td>
+        <td><a class="insp-inc-link" href="${formatIncidenciaUrl(r.incidencia)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.incidencia || '—')}</a></td>
+        <td>${escapeHtml(r.clienteAfetado || '—')}</td>
         <td><span class="status-badge">${statusLabel}</span></td>
         <td class="insp-dot-cell">
           <button class="insp-dot-btn" type="button" data-action="open-retorno" title="Abrir retorno">
@@ -218,30 +299,26 @@ function renderTable(){
   tbody.querySelectorAll('[data-action="open-retorno"]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const tr = e.currentTarget.closest('tr');
-      const inc = tr?.dataset?.inc || '';
-      const row = cacheReiteradas.find((x) => String(getVal(x, 'INCIDENCIA')).trim() === inc) || null;
-      if (!row) return;
-      currentRowForModal = row;
+      const elemento = tr?.dataset?.elemento || '';
+      const item = cacheRanking.find((x) => String(x.elemento).trim() === elemento) || null;
+      if (!item) return;
+      currentItemForModal = item;
 
-      const prev = cacheRetornosMap.get(inc);
-      const txt = prev?.retornoTexto || '';
+      const existing = (item.ocorrencias || []).map(x => cacheRetornosMap.get(String(getVal(x, 'INCIDENCIA')).trim())).find(Boolean);
+      const txt = existing?.retornoTexto || '';
 
       const tit = byId('retornoTitulo');
-      if (tit) tit.textContent = `Retorno • Incidência ${inc}`;
-      byId('retornoHeaderElemento').textContent = getVal(row, 'ELEMENTO') || '—';
-      byId('retornoHeaderIncidencia').textContent = inc || '—';
+      if (tit) tit.textContent = `Retorno • Estrutura ${item.elemento}`;
+      byId('retornoHeaderElemento').textContent = item.elemento || '—';
+      byId('retornoHeaderIncidencia').textContent = item.incidencia || '—';
       byId('retornoHeaderRegional').textContent = selectedRegional || '—';
-      byId('retornoHeaderCliente').textContent = getVal(row, 'CLI. AFE') || getVal(row, 'CLI AFE') || '—';
+      byId('retornoHeaderCliente').textContent = item.clienteAfetado || '—';
       byId('retornoTexto').value = txt;
       byId('retornoError').textContent = '';
 
       openModal('modalRetorno');
     });
   });
-}
-
-function getQuantidade(row){
-  return getVal(row, 'QUANTIDADE') || getVal(row, 'QTD') || getVal(row, 'QTDE') || getVal(row, 'QUANT') || getVal(row, 'QUANT.') || '1';
 }
 
 function matchesTipo(elementoRaw, tipo){
