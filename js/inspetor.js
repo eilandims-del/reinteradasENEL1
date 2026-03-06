@@ -1,24 +1,26 @@
-
 /**
  * Painel do Inspetor
- * - Seleciona Regional -> Data -> Elemento -> carrega e mostra tabela estilo planilha
- * - Bolinha (vermelha/verde) abre modal de retorno e salva em "retornos_inspetores"
+ * Fluxo: Regional -> Data -> Elemento -> tabela
+ * Bolinha verde abre modal de retorno e salva em retornos_inspetores
  */
 
 import { AuthService, DataService } from './services/firebase-service.js';
-import { showToast, formatDate } from './utils/helpers.js';
-import { openModal, closeModal } from './components/modal.js';
+import { showToast } from './utils/helpers.js';
+import { openModal } from './components/modal.js';
 import { setupRetornoModal } from './components/retorno-modal.js';
 
 let currentUser = null;
-
 let selectedRegional = 'TODOS';
 let selectedTipo = 'TODOS';
 let cacheReiteradas = [];
-let cacheRetornosMap = new Map(); // incidencia -> retorno
+let cacheRetornosMap = new Map();
+let currentRowForModal = null;
 
-function init() {
+function byId(id){ return document.getElementById(id); }
+
+function init(){
   initEvents();
+  setupModal();
   checkAuthState();
 }
 
@@ -26,74 +28,72 @@ function checkAuthState() {
   AuthService.onAuthStateChanged((user) => {
     currentUser = user;
 
-    if (user) {
-      document.getElementById('inspetorSection')?.classList.remove('hidden');
-      document.getElementById('loginSection')?.classList.add('hidden');
-      const lb = document.getElementById('logoutBtn');
-      if (lb) lb.style.display = 'block';
-
-      // defaults
-      enableDateInputs(true);
-      enableTipoInputs(false); // só libera após data válida
-      renderTableMessage('Selecione Regional → Data → Elemento.');
-
-    } else {
-      // ✅ Login único em /login.html (evita “duplo login”)
+    if (!user) {
       const base = window.location.pathname.replace(/\/[^/]*$/, '/');
       window.location.href = `${base}login.html?role=inspetor`;
+      return;
     }
+
+    const panel = byId('inspetorSection');
+    const logout = byId('logoutBtn');
+    if (panel) panel.style.display = 'block';
+    if (logout) logout.style.display = 'inline-flex';
+
+    renderTableMessage('Selecione Regional → Data → Elemento e clique no calendário para aplicar.');
   });
 }
 
-function initEvents() {
-  // Logout
-  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
-    await handleLogout();
+function initEvents(){
+  byId('logoutBtn')?.addEventListener('click', async () => {
+    await AuthService.logout();
   });
 
-  // Regional (radio)
-  document.querySelectorAll('input[name="insp_regional"]').forEach((el) => {
-    el.addEventListener('change', () => {
-      selectedRegional = el.value || 'TODOS';
-      enableDateInputs(true);
-
-      // ao trocar regional, invalida fluxo
-      cacheReiteradas = [];
-      cacheRetornosMap = new Map();
-      enableTipoInputs(false);
-      renderTableMessage('Selecione a Data (Início/Fim) para liberar o filtro de Elemento.');
-    });
+  byId('btnReloadInspetor')?.addEventListener('click', async () => {
+    await loadReiteradas();
   });
 
-  // Data inputs
-  document.getElementById('inspDataInicial')?.addEventListener('change', onDateChanged);
-  document.getElementById('inspDataFinal')?.addEventListener('change', onDateChanged);
-
-  // Tipo (radio)
-  document.querySelectorAll('input[name="insp_tipo"]').forEach((el) => {
-    el.addEventListener('change', async () => {
-      selectedTipo = el.value || 'TODOS';
-      await tryLoadAndRender();
-    });
+  byId('btnAplicarInsp')?.addEventListener('click', async () => {
+    await loadReiteradas();
   });
 
-  // Modal de retorno
+  byId('regionalSegment')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-regional]');
+    if (!btn) return;
+    selectedRegional = String(btn.dataset.regional || 'TODOS');
+    setSegmentActive('regionalSegment', 'data-regional', selectedRegional);
+    cacheReiteradas = [];
+    renderTableMessage('Regional selecionada. Informe Data e clique no calendário para aplicar.');
+  });
+
+  byId('tipoSegment')?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-tipo]');
+    if (!btn) return;
+    selectedTipo = String(btn.dataset.tipo || 'TODOS');
+    setSegmentActive('tipoSegment', 'data-tipo', selectedTipo);
+    renderTable();
+  });
+
+  byId('inspBusca')?.addEventListener('input', () => {
+    renderTable();
+  });
+}
+
+function setupModal(){
   setupRetornoModal({
     onSubmit: async ({ retornoTexto }) => {
-      const row = getCurrentRowForModal();
-      if (!row) {
-        showToast('Linha não encontrada para salvar retorno.', 'error');
+      if (!currentRowForModal) {
+        showToast('Nenhuma linha selecionada.', 'error');
         return { success: false };
       }
 
       const payload = {
-        incidencia: getVal(row, 'INCIDENCIA'),
+        incidencia: getVal(currentRowForModal, 'INCIDENCIA'),
         regional: selectedRegional,
-        dataRef: getVal(row, 'DATA') || '',
-        elemento: getVal(row, 'ELEMENTO'),
-        alimentador: getVal(row, 'ALIMENT.') || getVal(row, 'ALIMENTADOR') || '',
-        causa: getVal(row, 'CAUSA'),
-        clienteAfetado: getVal(row, 'CLI. AFE') || getVal(row, 'CLI AFE') || '',
+        dataRef: getVal(currentRowForModal, 'DATA') || '',
+        elemento: getVal(currentRowForModal, 'ELEMENTO'),
+        alimentador: getVal(currentRowForModal, 'ALIMENT.') || getVal(currentRowForModal, 'ALIMENTADOR') || '',
+        causa: getVal(currentRowForModal, 'CAUSA'),
+        clienteAfetado: getVal(currentRowForModal, 'CLI. AFE') || getVal(currentRowForModal, 'CLI AFE') || '',
         retornoTexto
       };
 
@@ -103,112 +103,148 @@ function initEvents() {
         return { success: false };
       }
 
-      showToast('Retorno salvo!', 'success');
-
-      // atualiza cache e tabela
       await loadRetornosDoInspetor();
       renderTable();
-
+      showToast('Retorno salvo!', 'success');
       return { success: true };
     }
   });
 }
 
-function enableDateInputs(on) {
-  const di = document.getElementById('inspDataInicial');
-  const df = document.getElementById('inspDataFinal');
-  if (di) di.disabled = !on;
-  if (df) df.disabled = !on;
-}
-
-function enableTipoInputs(on) {
-  document.querySelectorAll('input[name="insp_tipo"]').forEach((el) => {
-    el.disabled = !on;
+function setSegmentActive(containerId, attr, value){
+  byId(containerId)?.querySelectorAll(`[${attr}]`).forEach((btn) => {
+    btn.classList.toggle('active', String(btn.getAttribute(attr)) === String(value));
   });
 }
 
-function onDateChanged() {
-  const di = document.getElementById('inspDataInicial')?.value || '';
-  const df = document.getElementById('inspDataFinal')?.value || '';
+async function loadReiteradas(){
+  if (!currentUser) return;
+
+  const di = byId('inspDataInicial')?.value || '';
+  const df = byId('inspDataFinal')?.value || '';
 
   if (!di && !df) {
-    enableTipoInputs(false);
-    renderTableMessage('Informe ao menos uma data (Início ou Fim) para liberar o filtro de Elemento.');
+    showToast('Informe ao menos uma data.', 'error');
+    renderTableMessage('Informe ao menos uma data e clique no calendário para aplicar.');
     return;
   }
 
-  enableTipoInputs(true);
-  // mantém tipo atual (ou volta pra TODOS)
-  const sel = document.querySelector('input[name="insp_tipo"]:checked');
-  if (!sel) {
-    document.getElementById('tipo_todos')?.click();
-  } else {
-    // auto-load com o tipo atual
-    tryLoadAndRender();
-  }
+  renderTableMessage('Carregando...');
+
+  const res = await DataService.getData({
+    regional: selectedRegional,
+    dataInicial: di,
+    dataFinal: df
+  });
+
+  cacheReiteradas = (res?.success && Array.isArray(res.data)) ? res.data : [];
+  await loadRetornosDoInspetor();
+  renderTable();
+
+  const resumo = byId('inspResumo');
+  if (resumo) resumo.textContent = `Regional: ${selectedRegional} • Período: ${di || '—'} até ${df || '—'} • Registros: ${cacheReiteradas.length}`;
 }
 
-async function handleLogin() {
-  const email = document.getElementById('email')?.value || '';
-  const senha = document.getElementById('senha')?.value || '';
-
-  const result = await AuthService.login(email, senha);
-  if (result.success) {
-    showToast('Login realizado com sucesso!', 'success');
-  } else {
-    showToast(result.error || 'Erro ao fazer login', 'error');
-  }
+async function loadRetornosDoInspetor(){
+  const res = await DataService.getRetornosDoInspetor();
+  const rows = (res?.success && Array.isArray(res.data)) ? res.data : [];
+  cacheRetornosMap = new Map();
+  rows.forEach((r) => {
+    const inc = String(r.incidencia || r.INCIDENCIA || '').trim();
+    if (inc) cacheRetornosMap.set(inc, r);
+  });
 }
 
-async function handleLogout() {
-  const result = await AuthService.logout();
-  if (result.success) showToast('Logout realizado!', 'success');
-}
-
-function renderTableMessage(msg) {
-  const tbody = document.getElementById('inspTbody');
+function renderTableMessage(msg){
+  const tbody = byId('inspTbody');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 1rem; color: var(--medium-gray);">${msg}</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" class="insp-empty-cell">${escapeHtml(msg)}</td></tr>`;
 }
 
-function setLoading(on) {
-  const tbody = document.getElementById('inspTbody');
+function renderTable(){
+  const tbody = byId('inspTbody');
   if (!tbody) return;
-  if (on) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 1rem;">
-      <i class="fas fa-spinner fa-spin"></i> Carregando...
-    </td></tr>`;
+
+  const term = normText(byId('inspBusca')?.value || '');
+
+  let rows = [...cacheReiteradas];
+  rows = rows.filter((r) => matchesTipo(getVal(r, 'ELEMENTO'), selectedTipo));
+
+  if (term) {
+    rows = rows.filter((r) => {
+      const hay = [
+        getVal(r, 'ELEMENTO'),
+        getVal(r, 'INCIDENCIA'),
+        getVal(r, 'CLI. AFE') || getVal(r, 'CLI AFE'),
+        getVal(r, 'CAUSA')
+      ].join(' | ');
+      return normText(hay).includes(term);
+    });
   }
+
+  if (!rows.length) {
+    renderTableMessage('Nenhuma ocorrência para os filtros selecionados.');
+    return;
+  }
+
+  tbody.innerHTML = rows.map((r) => {
+    const elemento = getVal(r, 'ELEMENTO') || '—';
+    const qtd = getQuantidade(r);
+    const causa = getVal(r, 'CAUSA') || '—';
+    const inc = getVal(r, 'INCIDENCIA') || '—';
+    const cli = getVal(r, 'CLI. AFE') || getVal(r, 'CLI AFE') || getVal(r, 'CLI. AFET') || '—';
+    const retorno = cacheRetornosMap.get(inc);
+    const responded = !!retorno;
+    const statusLabel = responded ? 'RESPONDIDO' : 'PENDENTE';
+
+    return `
+      <tr data-inc="${escapeHtml(inc)}">
+        <td>${escapeHtml(elemento)}</td>
+        <td>${escapeHtml(qtd)}</td>
+        <td>${escapeHtml(causa)}</td>
+        <td><a class="insp-inc-link" href="${formatIncidenciaUrl(inc)}" target="_blank" rel="noopener noreferrer">${escapeHtml(inc)}</a></td>
+        <td>${escapeHtml(cli)}</td>
+        <td><span class="status-badge">${statusLabel}</span></td>
+        <td class="insp-dot-cell">
+          <button class="insp-dot-btn" type="button" data-action="open-retorno" title="Abrir retorno">
+            <span class="status-dot green"></span>
+          </button>
+        </td>
+        <td class="insp-dot-cell"><span class="status-dot ${responded ? 'green' : 'red'}"></span></td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('[data-action="open-retorno"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const tr = e.currentTarget.closest('tr');
+      const inc = tr?.dataset?.inc || '';
+      const row = cacheReiteradas.find((x) => String(getVal(x, 'INCIDENCIA')).trim() === inc) || null;
+      if (!row) return;
+      currentRowForModal = row;
+
+      const prev = cacheRetornosMap.get(inc);
+      const txt = prev?.retornoTexto || '';
+
+      const tit = byId('retornoTitulo');
+      if (tit) tit.textContent = `Retorno • Incidência ${inc}`;
+      byId('retornoHeaderElemento').textContent = getVal(row, 'ELEMENTO') || '—';
+      byId('retornoHeaderIncidencia').textContent = inc || '—';
+      byId('retornoHeaderRegional').textContent = selectedRegional || '—';
+      byId('retornoHeaderCliente').textContent = getVal(row, 'CLI. AFE') || getVal(row, 'CLI AFE') || '—';
+      byId('retornoTexto').value = txt;
+      byId('retornoError').textContent = '';
+
+      openModal('modalRetorno');
+    });
+  });
 }
 
-/* ====== data helpers ====== */
-function normKey(k) {
-  return String(k || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\./g, '').replace(/\s+/g, ' ');
+function getQuantidade(row){
+  return getVal(row, 'QUANTIDADE') || getVal(row, 'QTD') || getVal(row, 'QTDE') || getVal(row, 'QUANT') || getVal(row, 'QUANT.') || '1';
 }
-function getVal(row, key) {
-  if (!row) return '';
-  if (row[key] != null) return String(row[key]).trim();
 
-  const noDot = String(key).replace(/\./g, '');
-  if (row[noDot] != null) return String(row[noDot]).trim();
-
-  const target = normKey(key);
-  const found = Object.keys(row).find(k => normKey(k) === target);
-  if (found) return String(row[found]).trim();
-
-  return '';
-}
-function getQuantidade(row) {
-  const v =
-    getVal(row, 'QUANTIDADE') ||
-    getVal(row, 'QTD') ||
-    getVal(row, 'QTDE') ||
-    getVal(row, 'QUANT') ||
-    getVal(row, 'QUANT.') ||
-    '';
-  return v ? v : '1';
-}
-function matchesTipo(elementoRaw, tipo) {
+function matchesTipo(elementoRaw, tipo){
   const e = String(elementoRaw || '').trim().toUpperCase();
   if (!tipo || tipo === 'TODOS') return true;
   if (!e) return false;
@@ -219,124 +255,32 @@ function matchesTipo(elementoRaw, tipo) {
   return true;
 }
 
-/* ====== load and render ====== */
-async function tryLoadAndRender() {
-  if (!currentUser) return;
-
-  const di = document.getElementById('inspDataInicial')?.value || '';
-  const df = document.getElementById('inspDataFinal')?.value || '';
-
-  if (!di && !df) return;
-
-  setLoading(true);
-
-  const res = await DataService.getData({
-    regional: selectedRegional,
-    dataInicial: di,
-    dataFinal: df
-  });
-
-  cacheReiteradas = (res?.success && Array.isArray(res.data)) ? res.data : [];
-
-  await loadRetornosDoInspetor();
-  renderTable();
-
-  showToast(`Carregado: ${cacheReiteradas.length} reiterada(s).`, 'success');
+function getVal(row, key){
+  if (!row) return '';
+  if (row[key] != null) return String(row[key]).trim();
+  const noDot = String(key).replace(/\./g, '');
+  if (row[noDot] != null) return String(row[noDot]).trim();
+  const target = normKey(key);
+  const found = Object.keys(row).find((k) => normKey(k) === target);
+  if (found) return String(row[found]).trim();
+  return '';
 }
 
-async function loadRetornosDoInspetor() {
-  const res = await DataService.getRetornosDoInspetor();
-  const rows = (res?.success && Array.isArray(res.data)) ? res.data : [];
-
-  cacheRetornosMap = new Map();
-  rows.forEach(r => {
-    const inc = String(r.incidencia || r.INCIDENCIA || '').trim();
-    if (inc) cacheRetornosMap.set(inc, r);
-  });
+function normKey(k){
+  return String(k || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\./g, '').replace(/\s+/g, ' ');
 }
 
-function renderTable() {
-  const tbody = document.getElementById('inspTbody');
-  if (!tbody) return;
-
-  const filtered = cacheReiteradas.filter(r => matchesTipo(getVal(r, 'ELEMENTO'), selectedTipo));
-
-  if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding: 1rem; color: var(--medium-gray);">Nenhuma ocorrência para os filtros selecionados.</td></tr>`;
-    return;
-  }
-
-  const rowsHtml = filtered.map((r) => {
-    const elemento = getVal(r, 'ELEMENTO') || '—';
-    const qtd = getQuantidade(r);
-    const causa = getVal(r, 'CAUSA') || '—';
-    const inc = getVal(r, 'INCIDENCIA') || '—';
-    const cli = getVal(r, 'CLI. AFE') || getVal(r, 'CLI AFE') || getVal(r, 'CLI. AFET') || '—';
-
-    const retorno = cacheRetornosMap.get(inc);
-    const responded = !!retorno;
-
-    const dotClass = responded ? 'green' : 'red';
-    const statusLabel = responded ? 'RESPONDIDO' : 'PENDENTE';
-
-    return `
-      <tr data-inc="${escapeHtml(inc)}">
-        <td>${escapeHtml(elemento)}</td>
-        <td>${escapeHtml(qtd)}</td>
-        <td>${escapeHtml(causa)}</td>
-        <td><a href="${formatIncidenciaUrl(inc)}" target="_blank" rel="noopener noreferrer">${escapeHtml(inc)}</a></td>
-        <td>${escapeHtml(cli)}</td>
-        <td>
-          <div class="status-cell">
-            <span class="status-dot ${dotClass}" data-action="open-retorno" title="Abrir retorno"></span>
-            <span class="status-label">${statusLabel}</span>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
-
-  tbody.innerHTML = rowsHtml;
-
-  // click handlers (delegação)
-  tbody.querySelectorAll('[data-action="open-retorno"]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      const tr = e.target.closest('tr');
-      const inc = tr?.dataset?.inc || '';
-      const row = cacheReiteradas.find(x => String(getVal(x, 'INCIDENCIA')).trim() === inc) || null;
-      if (!row) return;
-
-      // salva referência para submit
-      setCurrentRowForModal(row);
-
-      // preenche com texto existente (se houver)
-      const prev = cacheRetornosMap.get(inc);
-      const txt = prev?.retornoTexto || '';
-
-      const tit = document.getElementById('retornoTitulo');
-      if (tit) tit.textContent = `Incidência ${inc} • ${getVal(row,'ELEMENTO') || ''}`;
-
-      const ta = document.getElementById('retornoTexto');
-      if (ta) ta.value = txt;
-
-      openModal('modalRetorno');
-    });
-  });
+function normText(v){
+  return String(v || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
 }
 
-/* ===== modal current row ===== */
-let __currentRowForModal = null;
-function setCurrentRowForModal(row) { __currentRowForModal = row; }
-function getCurrentRowForModal() { return __currentRowForModal; }
-
-/* ===== misc ===== */
-function formatIncidenciaUrl(inc) {
+function formatIncidenciaUrl(inc){
   const cleaned = String(inc || '').trim();
   if (!cleaned) return '#';
   return `http://sdeice.enelint.global/SAC_Detalhe_Inci.asp?inci_ref=${encodeURIComponent(cleaned)}`;
 }
 
-function escapeHtml(str) {
+function escapeHtml(str){
   return String(str ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -345,7 +289,6 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Init
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {

@@ -43,6 +43,15 @@ function setRole(role) {
   setError('');
 }
 
+
+function getRoleFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const q = String(params.get('role') || '').trim().toUpperCase();
+  if (q === 'ADMIN') return 'ADMIN';
+  if (q === 'INSPETOR') return 'INSPETOR';
+  return '';
+}
+
 function getRole() {
   const r = (localStorage.getItem(ROLE_KEY) || '').toUpperCase().trim();
   return (r === 'ADMIN' || r === 'INSPETOR') ? r : DEFAULT_ROLE;
@@ -64,7 +73,12 @@ async function autoRedirectIfLoggedIn() {
 }
 
 function initUI() {
-  setRole(getRole());
+  const queryRole = getRoleFromQuery();
+  if (queryRole) {
+    setRole(queryRole);
+  } else {
+    setRole(getRole());
+  }
 
   $('roleAdmin')?.addEventListener('click', () => setRole('ADMIN'));
   $('roleInspetor')?.addEventListener('click', () => setRole('INSPETOR'));

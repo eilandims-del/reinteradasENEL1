@@ -47,24 +47,20 @@ function checkAuthState() {
 }
 
 function showLoginSection() {
-  document.getElementById('loginSection').style.display = 'block';
-  document.getElementById('adminSection').style.display = 'none';
-  document.getElementById('logoutBtn').style.display = 'none';
+  const admin = document.getElementById('adminSection');
+  const logout = document.getElementById('logoutBtn');
+  if (admin) admin.style.display = 'none';
+  if (logout) logout.style.display = 'none';
 }
 
 function showAdminSection() {
-  document.getElementById('loginSection').style.display = 'none';
-  document.getElementById('adminSection').style.display = 'block';
-  document.getElementById('logoutBtn').style.display = 'block';
+  const admin = document.getElementById('adminSection');
+  const logout = document.getElementById('logoutBtn');
+  if (admin) admin.style.display = 'block';
+  if (logout) logout.style.display = 'block';
 }
 
 function initEventListeners() {
-  // Login
-  document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    await handleLogin();
-  });
-
   // Logout
   document.getElementById('logoutBtn')?.addEventListener('click', async () => {
     await handleLogout();
