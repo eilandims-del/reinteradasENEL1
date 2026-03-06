@@ -10,11 +10,11 @@
 }
 .insp-top{
   display:grid;
-  grid-template-columns: 180px minmax(320px, 1fr) minmax(320px, 1fr) 260px;
+  grid-template-columns: 180px minmax(320px, 1fr) minmax(320px, 1fr) minmax(320px, 1fr);
   gap:12px;
   align-items:stretch;
 }
-.insp-brand,.insp-group{
+.insp-brand,.insp-group,.insp-step{
   background:#fff;
   border:1px solid #d8dee7;
   border-radius:16px;
@@ -24,6 +24,22 @@
 .insp-brand{display:flex;align-items:center;justify-content:center;}
 .insp-logo{max-width:120px;max-height:52px;object-fit:contain;}
 .insp-group-title{font-weight:900;color:#374151;font-size:1.05rem;margin-bottom:10px;letter-spacing:.2px;}
+
+/* =========================
+   NOVO: Fluxo em 3 passos
+========================= */
+.insp-step-title{display:flex;align-items:center;gap:10px;font-weight:900;color:#374151;font-size:1.05rem;margin-bottom:10px;letter-spacing:.2px;}
+.step-badge{width:28px;height:28px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:#eef4ff;color:#1d4ed8;border:1px solid #cfe0ff;font-weight:900;}
+.step-hint{margin-top:8px;color:#64748b;font-weight:800;font-size:.92rem;}
+
+.choice-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+#elementoChoice{grid-template-columns:repeat(2,1fr);} /* fica mais fácil de ler */
+
+.choice-box{position:relative;display:flex;align-items:center;justify-content:center;height:54px;border:1px solid #d7dde7;border-radius:12px;background:#fff;font-weight:900;color:#334155;cursor:pointer;user-select:none;overflow:hidden;}
+.choice-box input{position:absolute;opacity:0;pointer-events:none;}
+.choice-box span{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:0 10px;}
+.choice-box input:checked + span{background:#eef4ff;border-color:#cfe0ff;color:#0f172a;box-shadow: inset 0 -3px 0 #2563eb;}
+.choice-box:hover span{background:#f8fafc;}
 .insp-segmented{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid #d7dde7;border-radius:12px;overflow:hidden;background:#f8fafc;}
 .insp-segmented-vertical{grid-template-columns:repeat(2,1fr);gap:8px;border:none;background:transparent;overflow:visible;padding:0;}
 .insp-segmented-vertical .insp-seg-btn{border:1px solid #d7dde7;border-radius:12px;}

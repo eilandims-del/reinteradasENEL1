@@ -5,12 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Painel do Inspetor - Reiteradas</title>
 
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/logo-enel-preview.png?v=2" />
+  <link rel="shortcut icon" href="assets/logo-enel-preview.png?v=2" />
+
   <link rel="stylesheet" href="css/styles.css" />
-  <link rel="stylesheet" href="css/inspetor.css" /> 
+  <link rel="stylesheet" href="css/inspetor.css" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 </head>
 
-<body>
+<body class="insp-body">
 <header class="header">
   <div class="container">
     <div class="header-content">
@@ -27,87 +32,152 @@
 
 <main class="main-content">
   <div class="container">
+    <section id="inspetorSection" class="insp-shell" style="display:none;">
 
-    <!-- Painel Inspetor (página protegida: se não estiver logado, redireciona para login.html) -->
-    <section id="inspetorSection" class="admin-section" style="display:none;">
-      <section class="card">
+      <div class="insp-top">
+        <div class="insp-brand">
+          <img src="assets/logo-enel-preview.png?v=2" alt="ENEL" class="insp-logo">
+        </div>
 
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
-          <h2 class="section-title" style="margin:0;"><i class="fas fa-list-check"></i> Reiteradas para Retorno</h2>
-          <button id="btnReloadInspetor" class="btn btn-secondary btn-sm">
+        <!-- Fluxo mais claro (3 passos): Regional -> Data -> Elemento -->
+
+        <!-- 1) REGIONAL -->
+        <div class="insp-step" id="stepRegional">
+          <div class="insp-step-title">
+            <span class="step-badge">1</span>
+            <span>REGIONAL</span>
+          </div>
+          <div class="choice-grid" id="regionalChoice">
+            <label class="choice-box">
+              <input type="radio" name="regional" value="TODOS" checked>
+              <span>TODOS</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="regional" value="ATLANTICO">
+              <span>AO</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="regional" value="NORTE">
+              <span>DN</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="regional" value="CENTRO NORTE">
+              <span>DO</span>
+            </label>
+          </div>
+          <div class="step-hint">Selecione a regional.</div>
+        </div>
+
+        <!-- 2) DATA -->
+        <div class="insp-step" id="stepData">
+          <div class="insp-step-title">
+            <span class="step-badge">2</span>
+            <span>DATA</span>
+          </div>
+          <div class="insp-date-box">
+            <input type="date" id="inspDataInicial" class="insp-date-input" />
+            <span class="insp-date-sep">|</span>
+            <input type="date" id="inspDataFinal" class="insp-date-input" />
+            <button id="btnAplicarInsp" class="insp-date-action" type="button" title="Carregar">
+              <i class="fas fa-search"></i>
+            </button>
+          </div>
+          <div class="step-hint">Informe o período e clique em buscar.</div>
+        </div>
+
+        <!-- 3) ELEMENTO -->
+        <div class="insp-step" id="stepElemento">
+          <div class="insp-step-title">
+            <span class="step-badge">3</span>
+            <span>ELEMENTO</span>
+          </div>
+          <div class="choice-grid" id="elementoChoice">
+            <label class="choice-box">
+              <input type="radio" name="tipo" value="TODOS" checked>
+              <span>TODOS</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="tipo" value="TRAFO">
+              <span>TRAFO</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="tipo" value="FUSIVEL">
+              <span>FUSÍVEL</span>
+            </label>
+            <label class="choice-box">
+              <input type="radio" name="tipo" value="RELIGADOR">
+              <span>RELIGADOR</span>
+            </label>
+          </div>
+          <div class="step-hint">Filtro aplicado após carregar.</div>
+        </div>
+      </div>
+
+      <div class="insp-resumo-row">
+        <div id="inspResumo" class="insp-resumo">1) Regional → 2) Data → 3) Elemento</div>
+        <div class="insp-actions">
+          <input id="inspBusca" class="insp-search" placeholder="Buscar elemento / incidência / cliente" />
+          <button id="btnReloadInspetor" class="btn btn-secondary btn-sm" type="button">
             <i class="fas fa-rotate"></i> Atualizar
           </button>
         </div>
+      </div>
 
-        <!-- filtros (AO/DN/DO) -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
-          <button id="btnAO" class="btn btn-outline btn-sm">AO</button>
-          <button id="btnDN" class="btn btn-outline btn-sm">DN</button>
-          <button id="btnDO" class="btn btn-outline btn-sm">DO</button>
-          <button id="btnTODOS" class="btn btn-outline btn-sm">TODOS</button>
-        </div>
+      <div class="insp-table-wrap">
+        <table class="insp-table">
+          <thead>
+            <tr>
+              <th>ELEMENTO</th>
+              <th>QUANTIDADE</th>
+              <th>CAUSA</th>
+              <th>INCIDÊNCIA</th>
+              <th>CLI AFET</th>
+              <th>STATUS</th>
+              <th class="insp-th-dot"><span class="status-dot green" aria-hidden="true"></span></th>
+              <th class="insp-th-dot"><span class="status-dot red" aria-hidden="true"></span></th>
+            </tr>
+          </thead>
+          <tbody id="inspTbody">
+            <tr><td colspan="8" class="insp-empty-cell">Selecione Regional → Data → Elemento.</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-        <!-- filtros de elemento -->
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-          <button id="btnTipoTrafo" class="btn btn-outline btn-sm">Trafo (T)</button>
-          <button id="btnTipoFusivel" class="btn btn-outline btn-sm">Fusível (F)</button>
-          <button id="btnTipoReligador" class="btn btn-outline btn-sm">Religador (outros)</button>
-          <button id="btnTipoTodos" class="btn btn-outline btn-sm">Todos</button>
-        </div>
-
-        <!-- período -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:end;">
-          <div class="form-group" style="margin:0;">
-            <label for="inspDataInicial">Data início</label>
-            <input type="date" id="inspDataInicial" disabled class="form-input" />
-          </div>
-          <div class="form-group" style="margin:0;">
-            <label for="inspDataFinal">Data fim</label>
-            <input type="date" id="inspDataFinal" disabled class="form-input" />
-          </div>
-          <button id="btnAplicarInsp" class="btn btn-primary btn-sm">
-            <i class="fas fa-filter"></i> Aplicar
-          </button>
-        </div>
-
-        <!-- busca -->
-        <div class="form-group" style="margin-top:12px;">
-          <label for="inspBusca">Buscar (elemento / incidência / cliente)</label>
-          <input id="inspBusca" class="form-input" placeholder="Digite para filtrar..." />
-        </div>
-
-        <div id="inspResumo" style="margin-top:10px;color:var(--medium-gray);"></div>
-
-        <!-- lista -->
-        <div id="inspLista" style="margin-top:12px;"></div>
-
-      </section>
     </section>
-
   </div>
 </main>
 
-<!-- Modal Retorno -->
-<div id="modalRetornoInspetor" class="modal">
-  <div class="modal-content" style="max-width:720px;">
-    <button class="modal-close" type="button">&times;</button>
-
-    <h2 id="retornoTitulo" style="margin-top:0;">Retorno</h2>
-
-    <div id="retornoMeta" style="font-size:0.95rem;color:var(--medium-gray);margin-bottom:10px;"></div>
-
-    <div class="form-group">
-      <label for="retornoTexto">Retorno</label>
-      <textarea id="retornoTexto" class="form-input" rows="5" placeholder="Digite o retorno..."></textarea>
+<div id="modalRetorno" class="modal">
+  <div class="modal-content modal-sm">
+    <div class="modal-header">
+      <h2 id="retornoTitulo">Retorno</h2>
+      <button class="modal-close" id="fecharModalRetorno" type="button">
+        <i class="fas fa-times"></i>
+      </button>
     </div>
 
-    <div style="display:flex;gap:10px;justify-content:flex-end;">
-      <button id="btnLimparRetorno" class="btn btn-secondary">
-        <i class="fas fa-eraser"></i> Limpar
-      </button>
-      <button id="btnEnviarRetorno" class="btn btn-primary">
-        <i class="fas fa-paper-plane"></i> Enviar
-      </button>
+    <div class="modal-body">
+      <div class="insp-retorno-meta">
+        <div><b>Elemento:</b> <span id="retornoHeaderElemento">—</span></div>
+        <div><b>Incidência:</b> <span id="retornoHeaderIncidencia">—</span></div>
+        <div><b>Regional:</b> <span id="retornoHeaderRegional">—</span></div>
+        <div><b>Cliente:</b> <span id="retornoHeaderCliente">—</span></div>
+      </div>
+
+      <div class="form-group">
+        <label for="retornoTexto">Retorno</label>
+        <textarea id="retornoTexto" class="form-input" rows="6" placeholder="Digite o retorno..."></textarea>
+        <div id="retornoError" class="error-message"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btnLimparRetorno" class="btn btn-secondary" type="button">
+          <i class="fas fa-eraser"></i> Limpar
+        </button>
+        <button id="btnEnviarRetorno" class="btn btn-primary" type="button">
+          <i class="fas fa-paper-plane"></i> Enviar
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -116,11 +186,6 @@
   <span id="toastMessage"></span>
 </div>
 
-<script type="module" src="js/firebase-config.js"></script>
-<script type="module" src="js/services/firebase-service.js"></script>
-<script type="module" src="js/utils/helpers.js"></script>
-<script type="module" src="js/components/modal.js"></script>
 <script type="module" src="js/inspetor.js"></script>
-
 </body>
 </html>

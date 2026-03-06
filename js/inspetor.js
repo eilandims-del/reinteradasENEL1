@@ -56,21 +56,21 @@ function initEvents(){
     await loadReiteradas();
   });
 
-  byId('regionalSegment')?.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-regional]');
-    if (!btn) return;
-    selectedRegional = String(btn.dataset.regional || 'TODOS');
-    setSegmentActive('regionalSegment', 'data-regional', selectedRegional);
-    cacheReiteradas = [];
-    renderTableMessage('Regional selecionada. Informe Data e clique no calendário para aplicar.');
+  // Regional (radio)
+  document.querySelectorAll('input[name="regional"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      selectedRegional = String(el.value || 'TODOS');
+      cacheReiteradas = []; // força recarga quando trocar regional
+      renderTableMessage('Regional selecionada. Agora informe o período e clique em buscar.');
+    });
   });
 
-  byId('tipoSegment')?.addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-tipo]');
-    if (!btn) return;
-    selectedTipo = String(btn.dataset.tipo || 'TODOS');
-    setSegmentActive('tipoSegment', 'data-tipo', selectedTipo);
-    renderTable();
+  // Tipo de elemento (radio)
+  document.querySelectorAll('input[name="tipo"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      selectedTipo = String(el.value || 'TODOS');
+      renderTable();
+    });
   });
 
   byId('inspBusca')?.addEventListener('input', () => {
